@@ -1,0 +1,51 @@
+{
+	"name": "Node.js & Python Development",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": ".."
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/git:1": {
+			"version": "1.1.3"
+		}
+	},
+	"mounts": [
+		"source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+		"source=/usr/bin/docker,target=/usr/bin/docker-host,type=bind,readonly",
+		"source=/usr/local/bin/kubectl,target=/usr/local/bin/kubectl-host,type=bind,readonly",
+		"source=${env:HOME}/.kube,target=/home/vscode/.kube,type=bind",
+		"source=${env:HOME}/.cursor/mcp.json,target=/home/vscode/.cursor/mcp.json,type=bind,readonly"
+	],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"dbaeumer.vscode-eslint",
+				"esbenp.prettier-vscode",
+				"ms-vscode.vscode-typescript-next",
+				"ms-kubernetes-tools.vscode-kubernetes-tools",
+				"ms-azuretools.vscode-docker"
+			],
+			"settings": {
+				"python.defaultInterpreterPath": "/usr/local/bin/python",
+				"python.linting.enabled": true,
+				"python.linting.pylintEnabled": true,
+				"python.formatting.provider": "black",
+				"editor.formatOnSave": true,
+				"editor.codeActionsOnSave": {
+					"source.organizeImports": "explicit"
+				},
+				"typescript.tsdk": "node_modules/typescript/lib",
+				"typescript.enablePromptUseWorkspaceTsdk": true
+			}
+		}
+	},
+	"remoteUser": "vscode",
+	"postCreateCommand": "bash .devcontainer/post-create.sh",
+	"remoteEnv": {
+		"PATH": "/usr/local/bin:/usr/bin:/bin:${containerEnv:PATH}"
+	},
+	"runArgs": []
+}
+
