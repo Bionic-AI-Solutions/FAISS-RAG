@@ -1,0 +1,285 @@
+---
+description: BMAD Integrations - Cursor Rules
+globs:
+alwaysApply: true
+---
+
+# BMAD Integrations - Standard Operating Procedures
+
+This rule file provides standard integration behaviors for all BMAD agents.
+
+## CRITICAL RULES
+
+### Rule 1: OpenProject for Work Management AND Document Storage
+
+- **ALL work items** (epics, features, stories, tasks) are managed in OpenProject
+- **ALL project documents** are stored as OpenProject attachments
+- ALWAYS check OpenProject for current work before coding
+- ALWAYS update work package status when starting/completing work
+- ALWAYS attach project documents to appropriate work package level
+
+### Rule 2: Archon for EXTERNAL Knowledge Search ONLY
+
+- Archon is ONLY for searching **external** knowledge (library docs, frameworks, patterns)
+- **DO NOT** store project documents in Archon
+- **DO NOT** use `mcp_archon_manage_document` for project artifacts
+- Use Archon to research before implementing
+
+## Document Storage Hierarchy
+
+**Store ALL project documents as OpenProject attachments at the appropriate level:**
+
+| Work Package Level | Documents                                                  |
+| ------------------ | ---------------------------------------------------------- |
+| **Project**        | Product briefs, project overview, high-level specs         |
+| **Epic**           | Epic specifications, business cases                        |
+| **Feature**        | Feature architecture, technical designs, API specs         |
+| **Story**          | Story specifications, acceptance criteria docs, test cases |
+| **Task**           | Implementation notes, technical details                    |
+
+## Integration Configuration
+
+All integration settings are stored in `_bmad/_config/project-config.yaml`.
+Agents should read configuration values from this file when executing workflows.
+
+## OpenProject Integration (Work Management + Documents)
+
+**Rule: OpenProject-First**
+
+- ALL work items (epics, stories, tasks) are managed in OpenProject
+- ALL project documents are stored as OpenProject attachments
+- ALWAYS check OpenProject for current work before coding
+- ALWAYS update work package status when starting/completing work
+
+**Configuration Location:** `project-config.yaml` → `openproject:`
+
+**Key Values:**
+
+- `openproject.project_id` - The OpenProject project ID
+- `openproject.types.*` - Work package type IDs
+- `openproject.statuses.*` - Status IDs
+- `openproject.priorities.*` - Priority IDs
+
+**Tool Reference:** `_bmad/integrations/openproject/tools.md`
+**Workflow Guide:** `_bmad/integrations/openproject/workflow.md`
+
+## Archon Integration (External Knowledge Search ONLY)
+
+**Rule: Research External Knowledge First**
+
+- Search external knowledge base before implementing
+- Archon is for EXTERNAL documentation ONLY (library docs, frameworks)
+- DO NOT store project documents in Archon
+- Keep queries SHORT (2-5 keywords)
+
+**Configuration Location:** `project-config.yaml` → `archon:`
+
+**Key Values:**
+
+- `archon.rag.default_match_count` - Default search results
+- `archon.rag.preferred_sources` - Preferred external knowledge sources
+
+**Tool Reference:** `_bmad/integrations/archon/tools.md`
+**Workflow Guide:** `_bmad/integrations/archon/workflow.md`
+
+## Agent Integration Responsibilities
+
+### All Agents
+
+1. Read `project-config.yaml` during activation
+2. Use configured OpenProject project_id for work management
+3. Store ALL project documents as OpenProject attachments
+4. Use Archon ONLY for searching external knowledge
+5. Follow work-driven development cycle
+
+### PM Agent
+
+- Create work packages using configured type IDs
+- **Documents:** Attach product briefs to Project-level, PRDs to Epic-level
+
+### Dev Agent
+
+- Query OpenProject for assigned work
+- Update status using configured status IDs
+- Search Archon for EXTERNAL patterns before implementation
+- **Documents:** Attach implementation notes to Task-level
+
+### Architect Agent
+
+- Create technical work packages
+- Search Archon for EXTERNAL architecture patterns
+- **Documents:** Attach architecture docs to Feature-level, ADRs to Feature-level
+
+### SM Agent
+
+- Use OpenProject for sprint planning
+- Report status from OpenProject
+- Track blockers in OpenProject
+- **Documents:** Attach sprint reports to Project-level
+
+### TEA Agent
+
+- Create test work packages
+- Search Archon for EXTERNAL testing patterns
+- Update test status in OpenProject
+- **Documents:** Attach test strategy to Feature-level, test cases to Story-level
+
+### Test Team
+
+- Validate tasks when marked "In testing" (79)
+- Validate stories when all tasks complete
+- Create bugs for validation failures
+- Validate bug fixes (iterate until closed)
+- Close stories only after all tasks and bugs closed
+- Close epics only after all stories closed
+- **Documents:** Attach test results to Story-level, bug reports to Story-level
+
+## Story Verification Standard
+
+**CRITICAL: Every story MUST have a final verification task**
+
+- **Task Name:** "Task N: Verify Story Implementation (AC: All)"
+- **Position:** Always the LAST task in the story
+- **Purpose:** Verify all acceptance criteria are met and implementation works as expected
+
+**Standard Verification Subtasks:**
+
+1. Verify all acceptance criteria are met
+2. Verify implementation works as expected
+3. Verify code follows architecture patterns and constraints
+4. Verify integration with existing systems (if applicable)
+5. Verify error handling works correctly
+6. Verify tests pass (if applicable)
+7. Verify documentation is updated
+
+**Story-Specific Verification:**
+
+- Infrastructure stories: Verify services start, health checks pass, network connectivity
+- API stories: Verify endpoints work, authentication/authorization works
+- Database stories: Verify schema migrations work, queries perform correctly
+- Integration stories: Verify external services connect, data flows correctly
+
+**Reference:** `_bmad/workflows/STORY_VERIFICATION_STANDARD.md`
+
+## Standard Workflow Pattern
+
+### Dev Workflow Pattern
+
+```
+1. ACTIVATE    → Load project-config.yaml
+2. CHECK WORK  → mcp_openproject_list_work_packages(project_id=config.openproject.project_id)
+3. START       → mcp_openproject_update_work_package(status_id=config.openproject.statuses.in_progress)
+4. RESEARCH    → mcp_archon_rag_search_knowledge_base(...) [EXTERNAL knowledge only]
+5. IMPLEMENT   → Execute work
+6. MARK READY  → mcp_openproject_update_work_package(status_id=config.openproject.statuses.in_testing)
+7. TEST VALIDATE → Test team validates (task/story) - see Test Team Workflow Pattern
+8. BUG CYCLE   → If bugs found: create → fix → validate (iterate until all bugs closed)
+9. VERIFY      → Complete verification task (verify all acceptance criteria)
+10. DOCUMENT   → Attach docs to appropriate OpenProject work package [NOT Archon]
+11. COMPLETE   → mcp_openproject_update_work_package(status_id=config.openproject.statuses.closed)
+```
+
+### Test Team Workflow Pattern
+
+```
+1. VALIDATE TASK → When task is "In testing" (79)
+   - Review implementation
+   - Run test suite
+   - Verify acceptance criteria
+   - Update status: "Closed" (82) if passes, "Test failed" (81) if fails → Create bug
+
+2. VALIDATE STORY → When story is "In testing" (79) and all tasks closed
+   - Review all tasks
+   - Run story test suite
+   - Verify all acceptance criteria
+   - Update status: "Closed" (82) if passes, "Test failed" (81) if fails → Create bugs
+
+3. CREATE BUG → When validation fails
+   - Create bug work package
+   - Link to story (parent relationship)
+   - Add detailed description
+   - Assign to dev
+   - Set status "New" (71)
+
+4. VALIDATE BUG FIX → When bug is "In testing" (79)
+   - Review fix
+   - Re-run tests
+   - Update status: "Closed" (82) if validated, "Test failed" (81) if incomplete → Iterate
+
+5. CLOSE STORY → When all tasks and bugs closed
+   - Verify prerequisites
+   - Close story (status 82)
+
+6. CLOSE EPIC → When all stories closed
+   - Verify all prerequisites
+   - Run epic-level integration tests
+   - Close epic (status 82)
+```
+
+### PM Workflow Pattern (Story Grooming)
+
+```
+1. REVIEW STORY → Get story from OpenProject, review acceptance criteria
+2. BREAK DOWN → Identify tasks needed (30 min - 4 hours each)
+3. CREATE FILE → Create story file in _bmad-output/implementation-artifacts/
+4. CREATE TASKS → Create ALL tasks in OpenProject using bulk_create
+5. LINK TASKS → Set parent relationships for all tasks
+6. VERIFY → Verify all tasks created and linked
+7. MARK IN PROGRESS → Update story status to "In progress" (77) ONLY after tasks created
+```
+
+## Quick Start Commands
+
+### Get Current Work
+
+```python
+mcp_openproject_list_work_packages(
+    project_id={config.openproject.project_id},
+    status="open"
+)
+```
+
+### Search External Knowledge
+
+```python
+# Search EXTERNAL documentation (library docs, frameworks)
+mcp_archon_rag_search_knowledge_base(
+    query="2-5 keywords",
+    match_count={config.archon.rag.default_match_count}
+)
+```
+
+### Create Work Package
+
+```python
+mcp_openproject_create_work_package(
+    project_id={config.openproject.project_id},
+    subject="...",
+    type_id={config.openproject.types.user_story},
+    description="..."
+)
+# Then attach relevant documents to this work package
+```
+
+### List Attachments on Work Package
+
+```python
+mcp_openproject_list_work_package_attachments(
+    work_package_id=...
+)
+```
+
+## What NOT To Do
+
+```python
+# ❌ WRONG - Don't store project documents in Archon
+mcp_archon_manage_document(
+    action="create",
+    project_id=archon_id,
+    title="My Project Architecture",  # DON'T DO THIS
+    content={"markdown": "..."}
+)
+
+# ✅ CORRECT - Attach project documents to OpenProject work packages
+# Upload architecture doc to Feature work package via OpenProject UI/API
+```

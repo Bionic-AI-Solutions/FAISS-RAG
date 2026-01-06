@@ -1,0 +1,210 @@
+---
+name: bug-management
+description: 'Manage bug lifecycle from creation through fix validation. This workflow handles bug creation, assignment, fix validation, and iteration until bugs are closed. Integrated with test-validation workflow.'
+web_bundle: true
+---
+
+# Bug Management Workflow
+
+**Goal:** Manage bug lifecycle from creation through fix validation, ensuring bugs are properly tracked, assigned, fixed, and validated before story closure.
+
+**Your Role:** You are a test engineer or developer managing bugs. Test engineers create bugs when validation fails. Developers fix bugs. Test engineers validate fixes. This workflow ensures bugs are properly managed through their lifecycle.
+
+---
+
+## WORKFLOW ARCHITECTURE
+
+This uses **step-file architecture** for disciplined execution:
+
+### Core Principles
+
+- **Micro-file Design**: Each step is a self-contained instruction file
+- **Just-In-Time Loading**: Only the current step file is in memory
+- **Sequential Enforcement**: Steps completed in order, conditional based on bug status
+- **State Tracking**: Document bug status and validation results in OpenProject
+
+### Step Processing Rules
+
+1. **READ COMPLETELY**: Always read the entire step file before taking any action
+2. **FOLLOW SEQUENCE**: Execute numbered sections in order
+3. **CREATE DETAILED BUGS**: Include expected vs actual, steps to reproduce, acceptance criteria violated
+4. **ITERATE**: Continue bug fix validation cycle until bug closed
+5. **VERIFY CLOSURE**: Only close bug after fix validated
+
+---
+
+## MODE OVERVIEW
+
+This workflow supports different bug management activities:
+
+| Mode | Purpose | Entry Point | Output |
+|------|---------|-------------|--------|
+| **Bug Creation** | Create bug from validation failure | Task/story validation fails | Bug created, assigned to dev |
+| **Bug Fix** | Fix bug | Bug assigned to dev | Bug fixed, marked "In testing" (79) |
+| **Bug Fix Validation** | Validate bug fix | Bug marked "In testing" (79) | Bug "Closed" (82) or iterate |
+
+---
+
+## WORKFLOW STEPS
+
+### Step 1: Bug Creation (Test Team)
+
+**When:** Task or story validation fails
+
+**Process:**
+1. Get task/story from OpenProject
+2. Identify validation failure
+3. Create bug work package in OpenProject:
+   - Subject: "Bug: [Brief Description]"
+   - Type: Bug (42)
+   - Description: Detailed bug report (see Bug Description Template)
+   - Priority: High (74), Normal (73), or Low (72)
+   - Status: New (71)
+4. Link bug to story (parent relationship)
+5. Assign bug to dev
+6. Add comment with validation failure details
+
+**Bug Description Template:**
+```markdown
+**Bug Report:**
+
+**Story:** [Story ID and Title]
+**Task:** [Task ID and Title] (if applicable)
+
+**Expected Behavior:**
+[What should happen]
+
+**Actual Behavior:**
+[What actually happens]
+
+**Steps to Reproduce:**
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+
+**Acceptance Criteria Violated:**
+- [AC 1]
+- [AC 2]
+
+**Test Results:**
+- Unit tests: [Pass/Fail]
+- Integration tests: [Pass/Fail]
+- Performance tests: [Pass/Fail]
+
+**Environment:**
+- [Environment details if relevant]
+```
+
+### Step 2: Bug Fix (Dev)
+
+**When:** Bug assigned to dev
+
+**Process:**
+1. Get bug from OpenProject
+2. Review bug description
+3. Investigate issue
+4. Implement fix
+5. Run tests
+6. Update bug status to "In testing" (79)
+7. Add comment with fix details:
+   - What was fixed
+   - How it was fixed
+   - Test results
+
+### Step 3: Bug Fix Validation (Test Team)
+
+**When:** Bug is marked "In testing" (79) after dev fix
+
+**Process:**
+1. Get bug from OpenProject
+2. Review fix
+3. Re-run tests
+4. Verify bug is resolved
+5. Verify no regressions
+6. Update bug status:
+   - "Closed" (82) if validated
+   - "Test failed" (81) if incomplete → Dev fixes again, iterate
+
+### Step 4: Bug Iteration
+
+**When:** Bug fix validation fails
+
+**Process:**
+1. Bug status "Test failed" (81)
+2. Add comment explaining why fix incomplete
+3. Dev fixes again → Bug status "In testing" (79)
+4. Test validates again → Repeat until bug "Closed" (82)
+
+### Step 5: Story Re-validation
+
+**When:** All bugs for a story are "Closed" (82)
+
+**Process:**
+1. Verify all bugs closed
+2. Re-run story validation
+3. If validation passes → Story "Closed" (82)
+4. If validation fails → Create new bugs → Iterate
+
+---
+
+## BUG STATUS FLOW
+
+```
+New (71) [Test team creates]
+    ↓
+In progress (77) [Dev fixes]
+    ↓
+In testing (79) [Dev completes fix]
+    ↓
+Closed (82) [Test validates] OR Test failed (81) [Iterate]
+```
+
+---
+
+## QUALITY GATES
+
+### Bug Creation Quality Gate
+
+**Before bug can be created:**
+- ✅ Validation failure identified
+- ✅ Expected vs actual behavior documented
+- ✅ Steps to reproduce included
+- ✅ Acceptance criteria violated identified
+- ✅ Test results included
+
+### Bug Fix Quality Gate
+
+**Before bug can be marked "In testing":**
+- ✅ Fix implemented
+- ✅ Tests run
+- ✅ Fix documented
+
+### Bug Closure Quality Gate
+
+**Before bug can be closed:**
+- ✅ Fix validated
+- ✅ Tests pass
+- ✅ No regressions
+- ✅ Test team approval
+
+---
+
+## INTEGRATION WITH OTHER WORKFLOWS
+
+- **test-validation:** Test validation fails → Create bug → Bug fixed → Validate fix
+- **dev-story:** Dev fixes bugs as part of story implementation
+- **groom-story:** Bugs created during story validation
+
+---
+
+## REFERENCES
+
+- **Test Validation Workflow:** `_bmad/bmm/workflows/4-implementation/test-validation/workflow.yaml`
+- **QA Testing Workflow:** `docs/QA_TESTING_WORKFLOW.md`
+- **Complete Agile Workflow:** `docs/COMPLETE_AGILE_WORKFLOW.md`
+- **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`
+
+
+
+
+

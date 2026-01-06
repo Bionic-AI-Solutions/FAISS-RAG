@@ -1,0 +1,109 @@
+# Sprint Status - Generated from OpenProject via MCP
+# Generated: 2026-01-05 09:59:24
+# Project: mem0-rag
+# Project Key: op-8
+# Tracking System: openproject
+# Story Location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Mark epic as 'in-progress' when starting work on its first story
+# - SM typically creates next story ONLY after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then Dev runs code-review (fresh context, ideally different LLM)
+# - Status synced from OpenProject MCP (Project ID: 8)
+
+generated: '2026-01-05 09:59:24'
+project: mem0-rag
+project_key: op-8
+tracking_system: openproject
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: in-progress
+  1-1-project-structure-and-development-environment-setup: done
+  1-2-core-infrastructure-services-setup: done
+  1-3-database-layer-and-schema-foundation: review
+  1-4-mcp-server-framework-implementation: review
+  1-5-authentication-middleware: review
+  1-6-authorization-and-rbac-middleware: backlog
+  1-7-tenant-isolation-and-data-security: backlog
+  1-8-audit-logging-infrastructure: backlog
+  1-9-rate-limiting-middleware: backlog
+  1-10-error-handling-framework: backlog
+  1-11-health-check-endpoints: backlog
+  1-12-basic-backup-operations: backlog
+  1-13-observability-integration-langfuse: backlog
+  epic-1-retrospective: optional
+  epic-2: done
+  2-1-domain-template-management: done
+  2-2-template-discovery-mcp-tool: done
+  2-3-tenant-registration-mcp-tool: done
+  2-4-tenant-model-configuration-mcp-tool: done
+  2-5-tenant-data-isolation-validation: done
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-document-ingestion-mcp-tool: backlog
+  3-2-document-versioning: backlog
+  3-3-document-deletion-mcp-tool: backlog
+  3-4-document-retrieval-mcp-tool: backlog
+  3-5-document-listing-mcp-tool: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-faiss-vector-search-implementation: backlog
+  4-2-meilisearch-keyword-search-implementation: backlog
+  4-3-hybrid-retrieval-engine: backlog
+  4-4-rag-search-mcp-tool: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-mem0-integration-layer: backlog
+  5-2-user-memory-retrieval-mcp-tool: backlog
+  5-3-user-memory-update-mcp-tool: backlog
+  5-4-user-memory-search-mcp-tool: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-session-context-storage: backlog
+  6-2-session-continuity-support: backlog
+  6-3-context-aware-search-results: backlog
+  6-4-returning-user-recognition: backlog
+  epic-6-retrospective: optional
+  epic-7: backlog
+  7-1-tenant-backup-mcp-tool: backlog
+  7-2-tenant-restore-mcp-tool: backlog
+  7-3-faiss-index-rebuild-mcp-tool: backlog
+  7-4-backup-validation-mcp-tool: backlog
+  epic-7-retrospective: optional
+  epic-8: backlog
+  8-1-usage-statistics-mcp-tool: backlog
+  8-2-search-analytics-mcp-tool: backlog
+  8-3-memory-analytics-mcp-tool: backlog
+  8-4-system-health-monitoring-mcp-tool: backlog
+  8-5-tenant-health-monitoring-mcp-tool: backlog
+  epic-8-retrospective: optional
+  epic-9: backlog
+  9-1-hipaa-compliance-support: backlog
+  9-2-soc-2-compliance-support: backlog
+  9-3-gdpr-compliance-support: backlog
+  9-4-tenant-data-export-mcp-tool: backlog
+  9-5-user-data-export-mcp-tool: backlog
+  9-6-tenant-configuration-update-mcp-tool: backlog
+  9-7-tenant-deletion-mcp-tool: backlog
+  9-8-subscription-tier-management: backlog
+  9-9-project-admin-role-support: backlog
+  epic-9-retrospective: optional

@@ -1,0 +1,191 @@
+---
+name: test-validation
+description: 'Validate tasks and stories after implementation, create bugs for failures, and manage the bug fix iteration cycle until all work is validated and closed. This workflow ensures quality gates are met before stories and epics are closed.'
+web_bundle: true
+---
+
+# Test Validation Workflow
+
+**Goal:** Validate tasks and stories after implementation, create bugs for failures, and manage the bug fix iteration cycle until all work is validated and closed.
+
+**Your Role:** You are a test engineer responsible for validating implementation work, creating bugs for failures, and ensuring quality gates are met before story/epic closure.
+
+---
+
+## WORKFLOW ARCHITECTURE
+
+This uses **step-file architecture** for disciplined execution:
+
+### Core Principles
+
+- **Micro-file Design**: Each step is a self-contained instruction file
+- **Just-In-Time Loading**: Only the current step file is in memory
+- **Sequential Enforcement**: Steps completed in order, conditional based on validation results
+- **State Tracking**: Document validation results and bug creation in OpenProject
+
+### Step Processing Rules
+
+1. **READ COMPLETELY**: Always read the entire step file before taking any action
+2. **FOLLOW SEQUENCE**: Execute numbered sections in order
+3. **VALIDATE PREREQUISITES**: Check all prerequisites before proceeding
+4. **CREATE BUGS**: When validation fails, create bugs with detailed descriptions
+5. **ITERATE**: Continue bug fix validation cycle until all bugs closed
+6. **VERIFY CLOSURE**: Only close story/epic after all prerequisites met
+
+---
+
+## MODE OVERVIEW
+
+This workflow supports validation at different levels:
+
+| Mode | Purpose | Entry Point | Output |
+|------|---------|-------------|--------|
+| **Task Validation** | Validate individual task | Task marked "In testing" (79) | Task "Closed" (82) or bug created |
+| **Story Validation** | Validate complete story | All tasks closed, story "In testing" (79) | Story "Closed" (82) or bugs created |
+| **Bug Fix Validation** | Validate bug fix | Bug marked "In testing" (79) | Bug "Closed" (82) or iterate |
+| **Epic Closure** | Close epic | All stories closed | Epic "Closed" (82) |
+
+---
+
+## WORKFLOW STEPS
+
+### Step 1: Task Validation
+
+**When:** Task is marked "In testing" (79)
+
+**Process:**
+1. Get task from OpenProject
+2. Review task implementation
+3. Run test suite for task
+4. Verify acceptance criteria met
+5. Verify code quality standards
+6. Update task status:
+   - "Closed" (82) if validation passes
+   - "Test failed" (81) if validation fails → Proceed to Step 2 (Bug Creation)
+
+### Step 2: Bug Creation
+
+**When:** Task or story validation fails
+
+**Process:**
+1. Create bug work package in OpenProject
+2. Link bug to story (parent relationship)
+3. Add detailed bug description:
+   - Expected behavior
+   - Actual behavior
+   - Steps to reproduce
+   - Acceptance criteria violated
+   - Test results
+4. Set bug priority (High 74, Normal 73, Low 72)
+5. Assign bug to dev
+6. Set bug status to "New" (71)
+
+### Step 3: Story Validation
+
+**When:** All tasks are "Closed" (82) and story is "In testing" (79)
+
+**Prerequisites:**
+- ✅ All tasks "Closed" (82)
+- ✅ All bugs "Closed" (82)
+
+**Process:**
+1. Verify prerequisites
+2. Review all task implementations
+3. Run full story test suite
+4. Verify all acceptance criteria met
+5. Verify integration with other stories
+6. Verify code follows architecture patterns
+7. Update story status:
+   - "Closed" (82) if validation passes
+   - "Test failed" (81) if validation fails → Proceed to Step 2 (Bug Creation)
+
+### Step 4: Bug Fix Validation
+
+**When:** Bug is marked "In testing" (79) after dev fix
+
+**Process:**
+1. Get bug from OpenProject
+2. Review fix
+3. Re-run tests
+4. Verify bug is resolved
+5. Verify no regressions
+6. Update bug status:
+   - "Closed" (82) if validated
+   - "Test failed" (81) if incomplete → Dev fixes again, iterate
+
+### Step 5: Story Closure
+
+**Prerequisites:**
+- ✅ All tasks "Closed" (82)
+- ✅ All bugs "Closed" (82)
+- ✅ Story validation passed
+
+**Process:**
+1. Verify all prerequisites
+2. Close story (status 82)
+3. Add final comment summarizing completion
+
+### Step 6: Epic Closure
+
+**Prerequisites:**
+- ✅ All stories "Closed" (82)
+- ✅ All tasks in all stories "Closed" (82)
+- ✅ All bugs in all stories "Closed" (82)
+
+**Process:**
+1. Verify all prerequisites
+2. Run epic-level integration tests
+3. Close epic (status 82)
+
+---
+
+## QUALITY GATES
+
+### Task Quality Gate
+
+**Before task can be closed:**
+- ✅ Implementation complete
+- ✅ Unit tests pass
+- ✅ Integration tests pass
+- ✅ Acceptance criteria met
+- ✅ Test team validation passed
+
+### Story Quality Gate
+
+**Before story can be closed:**
+- ✅ All tasks closed
+- ✅ All bugs closed
+- ✅ All acceptance criteria met
+- ✅ Story integration tests pass
+- ✅ Test team validation passed
+
+### Epic Quality Gate
+
+**Before epic can be closed:**
+- ✅ All stories closed
+- ✅ All tasks in all stories closed
+- ✅ All bugs in all stories closed
+- ✅ Epic integration tests pass
+- ✅ Test team validation passed
+
+---
+
+## INTEGRATION WITH OTHER WORKFLOWS
+
+- **dev-story:** Dev marks tasks/stories "In testing" (79) → Triggers test-validation
+- **groom-story:** PM creates tasks → Dev implements → Test validates
+- **bug-management:** Test creates bugs → Dev fixes → Test validates
+
+---
+
+## REFERENCES
+
+- **Story Verification Standard:** `_bmad/workflows/STORY_VERIFICATION_STANDARD.md`
+- **QA Testing Workflow:** `docs/QA_TESTING_WORKFLOW.md`
+- **Complete Agile Workflow:** `docs/COMPLETE_AGILE_WORKFLOW.md`
+- **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`
+
+
+
+
+

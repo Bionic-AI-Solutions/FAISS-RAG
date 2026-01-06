@@ -1,0 +1,93 @@
+# BMAD BMM Workflow: test-validation
+
+**Workflow Type:** Test Validation  
+**Agent:** Test Team  
+**Phase:** Post-Implementation  
+**Status:** MANDATORY WORKFLOW
+
+## Purpose
+
+Validate tasks and stories after implementation, create bugs for failures, and manage the bug fix iteration cycle until all work is validated and closed. This workflow ensures quality gates are met before stories and epics are closed.
+
+## Workflow Steps
+
+### Step 1: Task Validation
+
+**When:** Task is marked "In testing" (79)
+
+**Process:**
+1. Review task implementation
+2. Run test suite for task
+3. Verify acceptance criteria met
+4. Update task status:
+   - "Closed" (82) if validation passes
+   - "Test failed" (81) if validation fails → Create bug
+
+### Step 2: Story Validation
+
+**When:** All tasks are "Closed" (82) and story is "In testing" (79)
+
+**Prerequisites:**
+- ✅ All tasks "Closed" (82)
+- ✅ All bugs "Closed" (82)
+
+**Process:**
+1. Review all task implementations
+2. Run full story test suite
+3. Verify all acceptance criteria met
+4. Update story status:
+   - "Closed" (82) if validation passes
+   - "Test failed" (81) if validation fails → Create bugs
+
+### Step 3: Bug Creation
+
+**When:** Task or story validation fails
+
+**Process:**
+1. Create bug work package
+2. Link bug to story (parent relationship)
+3. Add detailed bug description
+4. Set bug priority
+5. Assign bug to dev
+6. Set bug status to "New" (71)
+
+### Step 4: Bug Fix Validation
+
+**When:** Bug is marked "In testing" (79) after dev fix
+
+**Process:**
+1. Review fix
+2. Re-run tests
+3. Verify bug is resolved
+4. Update bug status:
+   - "Closed" (82) if validated
+   - "Test failed" (81) if incomplete → Iterate
+
+### Step 5: Story Closure
+
+**Prerequisites:**
+- ✅ All tasks "Closed" (82)
+- ✅ All bugs "Closed" (82)
+- ✅ Story validation passed
+
+**Process:**
+1. Verify all prerequisites
+2. Close story (status 82)
+
+### Step 6: Epic Closure
+
+**Prerequisites:**
+- ✅ All stories "Closed" (82)
+- ✅ All tasks in all stories "Closed" (82)
+- ✅ All bugs in all stories "Closed" (82)
+
+**Process:**
+1. Verify all prerequisites
+2. Run epic-level integration tests
+3. Close epic (status 82)
+
+## References
+
+- **QA Testing Workflow:** `docs/QA_TESTING_WORKFLOW.md`
+- **Complete Agile Workflow:** `docs/COMPLETE_AGILE_WORKFLOW.md`
+- **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`

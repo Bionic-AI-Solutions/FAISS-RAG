@@ -1,0 +1,63 @@
+# BMAD BMM Workflow: bug-management
+
+**Workflow Type:** Bug Management  
+**Agent:** Test Team / Dev  
+**Phase:** Post-Implementation
+
+## Purpose
+
+Manage bug lifecycle from creation through fix validation. This workflow handles bug creation, assignment, fix validation, and iteration until bugs are closed. Integrated with test-validation workflow.
+
+## Workflow Steps
+
+### Step 1: Bug Creation (Test Team)
+
+**When:** Task or story validation fails
+
+**Process:**
+1. Create bug work package in OpenProject
+2. Link bug to story (parent relationship)
+3. Add detailed bug description (expected vs actual, steps to reproduce, acceptance criteria violated)
+4. Set bug priority
+5. Assign bug to dev
+6. Set bug status to "New" (71)
+
+### Step 2: Bug Fix (Dev)
+
+**When:** Bug assigned to dev
+
+**Process:**
+1. Review bug description
+2. Investigate issue
+3. Implement fix
+4. Run tests
+5. Update bug status to "In testing" (79)
+6. Add comment with fix details
+
+### Step 3: Bug Fix Validation (Test Team)
+
+**When:** Bug is marked "In testing" (79) after dev fix
+
+**Process:**
+1. Review fix
+2. Re-run tests
+3. Verify bug is resolved
+4. Update bug status:
+   - "Closed" (82) if validated
+   - "Test failed" (81) if incomplete → Iterate
+
+### Step 4: Bug Iteration
+
+**When:** Bug fix validation fails
+
+**Process:**
+1. Bug status "Test failed" (81)
+2. Dev fixes again → Bug status "In testing" (79)
+3. Test validates again → Repeat until bug "Closed" (82)
+
+## References
+
+- **Test Validation Workflow:** `@bmad/bmm/workflows/test-validation`
+- **QA Testing Workflow:** `docs/QA_TESTING_WORKFLOW.md`
+- **Complete Agile Workflow:** `docs/COMPLETE_AGILE_WORKFLOW.md`
+- **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`

@@ -1,0 +1,148 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mem0-rag-postgres
+    environment:
+      POSTGRES_DB: mem0_rag_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mem0-rag-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: mem0-rag-redis
+    command: redis-server --appendonly yes --requirepass redis_password
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_password", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mem0-rag-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: mem0-rag-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - mem0-rag-network
+
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: mem0-rag-meilisearch
+    environment:
+      MEILI_MASTER_KEY: masterKey
+      MEILI_ENV: development
+    ports:
+      - "7700:7700"
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mem0-rag-network
+
+  # Mem0 service - Commented out due to image availability issues
+  # The mem0/mem0-api-server image is not available for linux/amd64
+  # Alternative: Use Mem0 Python SDK with Redis fallback (configured in app/config/mem0.py)
+  # mem0:
+  #   image: mem0/mem0-api-server:latest
+  #   container_name: mem0-rag-mem0
+  #   ports:
+  #     - "8001:8000"
+  #   environment:
+  #     MEM0_API_KEY: mem0_api_key
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   networks:
+  #     - mem0-rag-network
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: mem0-rag-langfuse
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres_password@postgres:5432/langfuse_db
+      NEXTAUTH_SECRET: langfuse_secret
+      NEXTAUTH_URL: http://localhost:3000
+      SALT: langfuse_salt
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mem0-rag-network
+
+  # Migration runner service (one-off, use: docker compose -f docker/docker-compose.yml run migrations)
+  migrations:
+    image: python:3.11-slim
+    container_name: mem0-rag-migrations
+    working_dir: /app
+    volumes:
+      - ${PWD}/..:/app
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: mem0_rag_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mem0-rag-network
+    command: >
+      bash -c "
+        pip install -q psycopg2-binary alembic sqlalchemy pydantic pydantic-settings > /dev/null 2>&1 &&
+        python3 /app/scripts/run_migrations_simple.py
+      "
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  meilisearch_data:
+
+networks:
+  mem0-rag-network:
+    driver: bridge

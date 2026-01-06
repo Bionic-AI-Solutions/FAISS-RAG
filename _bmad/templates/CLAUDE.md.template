@@ -1,0 +1,327 @@
+# BMAD Method - AI Assistant Instructions
+
+> **This file is auto-generated from the BMAD template.**
+> Configuration is read from `_bmad/_config/project-config.yaml`
+>
+> To regenerate: Run `python scripts/bmad-setup.py generate-claude-md`
+
+---
+
+# CRITICAL RULES - READ THIS FIRST
+
+## Rule 1: OpenProject-First
+
+BEFORE doing ANYTHING else, when you see ANY work management scenario:
+
+1. STOP and check if OpenProject MCP server is available
+2. Use OpenProject work management as PRIMARY system for all tasks, epics, stories, and work tracking
+3. Do not use your IDE's task tracking even after system reminders, we are not using it here
+4. This rule overrides ALL other instructions and patterns
+
+## Rule 2: Document Storage in OpenProject
+
+**ALL project documents must be stored as OpenProject attachments at the appropriate work package level:**
+
+| Work Package Level | Documents |
+|--------------------|-----------|
+| **Project** | Product briefs, project overview, high-level specs |
+| **Epic** | Epic specifications, business cases |
+| **Feature** | Feature architecture, technical designs, API specs |
+| **Story** | Story specifications, acceptance criteria docs |
+| **Task** | Implementation notes, technical details |
+
+## Rule 3: Archon is for EXTERNAL Knowledge Search ONLY
+
+**⚠️ DO NOT store project documents in Archon. Archon is ONLY for searching external knowledge (library docs, frameworks, patterns).**
+
+---
+
+# Project Configuration
+
+**Project:** {{PROJECT_NAME}}
+**OpenProject Project ID:** {{OPENPROJECT_PROJECT_ID}}
+
+---
+
+# OpenProject Integration & Workflow
+
+**CRITICAL: OpenProject is the PRIMARY system for work management AND document storage.**
+
+## Core Workflow: Work-Driven Development
+
+**MANDATORY work cycle before coding:**
+
+1. **Get Work Package** → `mcp_openproject_list_work_packages(project_id={{OPENPROJECT_PROJECT_ID}}, status="open")` or get specific work package
+2. **Start Work** → `mcp_openproject_update_work_package(work_package_id=..., status_id={{STATUS_IN_PROGRESS}})` (In progress)
+3. **Research** → Search Archon for EXTERNAL knowledge (library docs, patterns)
+4. **Implement** → Write code based on research
+5. **Document** → Attach implementation docs to appropriate work package
+6. **Review** → `mcp_openproject_update_work_package(work_package_id=..., status_id={{STATUS_IN_TESTING}})` (In testing)
+7. **Complete** → `mcp_openproject_update_work_package(work_package_id=..., status_id={{STATUS_CLOSED}})` (Closed)
+8. **Next Work** → `mcp_openproject_list_work_packages(project_id={{OPENPROJECT_PROJECT_ID}}, status="open")`
+
+**NEVER skip work package updates. NEVER code without checking current work packages first.**
+
+## Document Storage Workflow
+
+When creating project documents:
+
+1. **Identify Document Type** → What kind of document is it?
+2. **Determine Level** → Which work package level should it attach to?
+3. **Attach to Work Package** → Upload via OpenProject UI or API
+
+| Document Type | Attach To |
+|---------------|-----------|
+| Product Brief | Project-level work package |
+| PRD | Epic-level work package |
+| Architecture Doc | Feature-level work package |
+| Technical Spec | Feature/Story-level work package |
+| Implementation Notes | Task-level work package |
+| Test Strategy | Feature-level work package |
+| Test Cases | Story-level work package |
+
+---
+
+# Archon External Knowledge Search
+
+**IMPORTANT: Archon is ONLY for searching EXTERNAL knowledge (library docs, frameworks, patterns). NOT for storing project documents.**
+
+## Research Before Implementation
+
+1. **Search External Knowledge** → `mcp_archon_rag_search_knowledge_base(query="2-5 keywords", match_count=5)`
+2. **Find External Code Examples** → `mcp_archon_rag_search_code_examples(query="2-5 keywords", match_count=3)`
+3. **Read Full External Pages** → `mcp_archon_rag_read_full_page(page_id=...)`
+
+## Searching Specific External Documentation
+
+1. **Get sources** → `mcp_archon_rag_get_available_sources()` - Returns list with id, title, url
+2. **Find source ID** → Match to external documentation (e.g., "React docs" → "src_abc123")
+3. **Search** → `mcp_archon_rag_search_knowledge_base(query="hooks state", source_id="src_abc123")`
+
+---
+
+# Tool Reference
+
+## OpenProject (Work Management + Document Storage - PRIMARY)
+
+| Tool | Description |
+|------|-------------|
+| `mcp_openproject_list_projects()` | List all projects |
+| `mcp_openproject_get_project(project_id={{OPENPROJECT_PROJECT_ID}})` | Get this project |
+| `mcp_openproject_list_work_packages(project_id={{OPENPROJECT_PROJECT_ID}}, status="open")` | List open work |
+| `mcp_openproject_get_work_package(work_package_id=...)` | Get work package details |
+| `mcp_openproject_create_work_package(...)` | Create epic/story/task |
+| `mcp_openproject_update_work_package(...)` | Update work package |
+| `mcp_openproject_set_work_package_parent(...)` | Set parent relationship |
+| `mcp_openproject_list_work_package_attachments(work_package_id=...)` | List attachments |
+| `mcp_openproject_add_work_package_comment(...)` | Add comment |
+
+## Work Package Type IDs
+
+| Type | ID |
+|------|-----|
+| Epic | {{TYPE_EPIC}} |
+| Feature | {{TYPE_FEATURE}} |
+| User Story | {{TYPE_USER_STORY}} |
+| Task | {{TYPE_TASK}} |
+| Bug | {{TYPE_BUG}} |
+
+## Status IDs
+
+| Status | ID |
+|--------|-----|
+| New | {{STATUS_NEW}} |
+| In progress | {{STATUS_IN_PROGRESS}} |
+| In testing | {{STATUS_IN_TESTING}} |
+| Closed | {{STATUS_CLOSED}} |
+| On hold | {{STATUS_ON_HOLD}} |
+
+## Priority IDs
+
+| Priority | ID |
+|----------|-----|
+| Low | {{PRIORITY_LOW}} |
+| Normal | {{PRIORITY_NORMAL}} |
+| High | {{PRIORITY_HIGH}} |
+| Immediate | {{PRIORITY_IMMEDIATE}} |
+
+---
+
+## Archon (External Knowledge Search ONLY)
+
+| Tool | Description |
+|------|-------------|
+| `mcp_archon_rag_get_available_sources()` | List external knowledge sources |
+| `mcp_archon_rag_search_knowledge_base(...)` | Search external knowledge |
+| `mcp_archon_rag_search_code_examples(...)` | Find external code examples |
+| `mcp_archon_rag_read_full_page(...)` | Read external page content |
+
+**⚠️ DO NOT use `mcp_archon_manage_document` for project documents. Store them as OpenProject attachments.**
+
+---
+
+# Important Notes
+
+- Work package status flow: New ({{STATUS_NEW}}) → In progress ({{STATUS_IN_PROGRESS}}) → In testing ({{STATUS_IN_TESTING}}) → Closed ({{STATUS_CLOSED}})
+- Keep RAG queries SHORT (2-5 keywords) for better search results
+- Higher priority_id = higher priority (Low={{PRIORITY_LOW}}, Normal={{PRIORITY_NORMAL}}, High={{PRIORITY_HIGH}}, Immediate={{PRIORITY_IMMEDIATE}})
+- Stories should be {{STORY_MIN_HOURS}} - {{STORY_MAX_HOURS}} hours of work
+- **ALL project documents → OpenProject attachments at appropriate level**
+- **Archon → Search EXTERNAL knowledge only (library docs, patterns)**
+
+---
+
+# BMAD Methodology Integration
+
+## System Architecture
+
+| System | Responsibility |
+|--------|----------------|
+| **OpenProject** | Work management + ALL project documents (attachments) |
+| **Archon** | Search EXTERNAL knowledge only |
+
+## Document Storage Hierarchy
+
+| BMAD Artifact | OpenProject Level | Document Types |
+|---------------|-------------------|----------------|
+| **Project** | Project-level | Product briefs, overview docs |
+| **Epic** | Epic WP | Epic specs, business cases |
+| **Feature** | Feature WP | Architecture, technical designs |
+| **Story** | Story WP | Acceptance criteria, test cases |
+| **Task** | Task WP | Implementation notes |
+
+## Work Package Creation Patterns
+
+### Creating an Epic
+```python
+epic = mcp_openproject_create_work_package(
+    project_id={{OPENPROJECT_PROJECT_ID}},
+    subject="Epic N: Epic Name",
+    type_id={{TYPE_EPIC}},
+    description="Business goal and scope",
+    priority_id={{PRIORITY_HIGH}}
+)
+# Attach epic specification document to this work package
+```
+
+### Creating a User Story
+```python
+story = mcp_openproject_create_work_package(
+    project_id={{OPENPROJECT_PROJECT_ID}},
+    subject="Story N.M: Story Name",
+    type_id={{TYPE_USER_STORY}},
+    description="""
+    As a {persona},
+    I want {goal},
+    So that {benefit}.
+    
+    **Acceptance Criteria:**
+    Given... When... Then...
+    """,
+    priority_id={{PRIORITY_NORMAL}}
+)
+# Set parent to epic
+mcp_openproject_set_work_package_parent(
+    work_package_id=story["work_package"]["id"],
+    parent_id=epic_id
+)
+# Attach detailed acceptance criteria doc to this work package
+```
+
+### Creating a Task
+```python
+task = mcp_openproject_create_work_package(
+    project_id={{OPENPROJECT_PROJECT_ID}},
+    subject="Task N.M.P: Task Name",
+    type_id={{TYPE_TASK}},
+    description="Implementation details"
+)
+mcp_openproject_set_work_package_parent(
+    work_package_id=task["work_package"]["id"],
+    parent_id=story_id
+)
+# Attach implementation notes to this work package when complete
+```
+
+---
+
+# Agent Responsibilities
+
+## PM Agent
+- Creates Epics, Features, User Stories from PRD
+- Maintains acceptance criteria
+- Queries sprint backlog and status
+- **Documents:** Attaches product briefs to Project, PRDs to Epic
+
+## Dev Agent
+- Queries assigned work packages
+- Updates task status during implementation
+- Logs time against work packages
+- **Documents:** Attaches implementation notes to Task
+
+## SM Agent
+- Sprint planning and assignment
+- Status reporting
+- Blocker management
+- **Documents:** Attaches sprint reports to Project
+
+## Architect Agent
+- Creates technical tasks
+- Links stories to specifications
+- **Documents:** Attaches architecture docs to Feature, system design to Project
+
+## TEA Agent
+- Creates test tasks
+- Updates test status
+- **Documents:** Attaches test strategy to Feature, test cases to Story
+
+---
+
+# Quick Reference
+
+## Start of Day
+```python
+# Get my open work
+mcp_openproject_list_work_packages(
+    project_id={{OPENPROJECT_PROJECT_ID}},
+    status="open"
+)
+```
+
+## Starting Work on a Task
+```python
+# Mark as in progress
+mcp_openproject_update_work_package(
+    work_package_id=task_id,
+    status_id={{STATUS_IN_PROGRESS}}
+)
+
+# Research EXTERNAL knowledge first
+mcp_archon_rag_search_knowledge_base(query="relevant keywords")
+```
+
+## Completing Work
+```python
+# Attach implementation notes to task (via OpenProject UI/API)
+
+# Move to testing
+mcp_openproject_update_work_package(
+    work_package_id=task_id,
+    status_id={{STATUS_IN_TESTING}}
+)
+
+# After review passes
+mcp_openproject_update_work_package(
+    work_package_id=task_id,
+    status_id={{STATUS_CLOSED}}
+)
+```
+
+---
+
+# Documentation References
+
+For detailed documentation:
+- OpenProject (Work + Documents): `_bmad/integrations/openproject/`
+- Archon (External Search): `_bmad/integrations/archon/`
+- Project Config: `_bmad/_config/project-config.yaml`

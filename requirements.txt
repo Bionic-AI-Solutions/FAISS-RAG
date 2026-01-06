@@ -1,0 +1,68 @@
+# Core Framework
+fastapi>=0.104.0
+fastmcp>=0.9.0
+uvicorn[standard]>=0.24.0
+
+# Configuration & Validation
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.23
+asyncpg>=0.29.0
+psycopg2-binary>=2.9.9  # Sync driver for Alembic migrations
+alembic>=1.12.0
+
+# Caching & Session Storage
+redis>=5.0.0
+aioredis>=2.0.1
+
+# Object Storage
+minio>=7.2.0
+
+# Search Engines
+meilisearch>=0.33.0
+faiss-cpu>=1.7.4
+
+# Memory Management
+# Note: Mem0 is self-hosted containerized service, accessed via HTTP API
+
+# Observability
+langfuse>=2.0.0
+structlog>=23.2.0
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Rate Limiting
+slowapi>=0.1.9
+
+# HTTP Client
+httpx>=0.25.0
+
+# AI/ML Services
+openai>=1.12.0
+numpy>=1.24.0
+
+# Utilities
+python-multipart>=0.0.6
+
+# Development Dependencies (optional, install with: pip install -r requirements-dev.txt)
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# pytest-cov>=4.1.0
+# pytest-mock>=3.12.0
+# black>=23.11.0
+# flake8>=6.1.0
+# mypy>=1.7.0
+# isort>=5.12.0
+# bandit>=1.7.5
+
+
+
+
+
+
+
+

@@ -1,0 +1,106 @@
+# BMAD BMM Workflow: groom-story
+
+**Workflow Type:** Story Grooming  
+**Agent:** PM (Product Manager)  
+**Phase:** Pre-Implementation  
+**Status:** MANDATORY WORKFLOW
+
+## Purpose
+
+Groom a story by breaking it down into implementable tasks and creating them in OpenProject BEFORE implementation begins. This is a mandatory agile practice that must be completed before the story moves to "In progress".
+
+## Workflow Steps
+
+### Step 1: Review Story
+
+1. Get story from OpenProject
+2. Review acceptance criteria
+3. Identify all tasks needed to complete the story
+4. Ensure tasks are granular (30 min - 4 hours of work)
+5. Map each task to specific acceptance criteria
+
+### Step 2: Create Story File
+
+1. Create story file in `_bmad-output/implementation-artifacts/`
+2. Include all acceptance criteria
+3. Break down into tasks with subtasks
+4. Map each task to specific acceptance criteria
+
+### Step 3: Create Tasks in OpenProject
+
+**CRITICAL:** All tasks MUST be created in OpenProject during grooming, before story moves to "In progress".
+
+```python
+# Create all tasks for the story
+tasks = [
+    {
+        "subject": "Task 1: [Task Title]",
+        "type_id": 36,  # Task
+        "description": "Detailed description with acceptance criteria...",
+        "status_id": 71  # New
+    },
+    # ... all tasks
+]
+
+# Bulk create
+result = mcp_openproject_bulk_create_work_packages(
+    project_id=8,
+    work_packages=tasks
+)
+
+# Set parent relationships
+for task in result["created"]:
+    mcp_openproject_set_work_package_parent(
+        work_package_id=task["id"],
+        parent_id=story_id
+    )
+```
+
+### Step 4: Verify Tasks Created
+
+1. Verify all tasks are created: `mcp_openproject_get_work_package_children(parent_id=story_id)`
+2. Verify all tasks are linked (parent relationship set)
+3. Verify task descriptions are complete
+
+### Step 5: Update Story Status
+
+**ONLY after all tasks are created:**
+
+```python
+mcp_openproject_update_work_package(
+    work_package_id=story_id,
+    status_id=77  # In progress
+)
+```
+
+## Checklist
+
+**Before marking story as "In progress":**
+
+- [ ] Story acceptance criteria reviewed
+- [ ] Story broken down into tasks
+- [ ] Story file created with all tasks
+- [ ] All tasks created in OpenProject
+- [ ] All tasks linked to story (parent relationship)
+- [ ] Task descriptions include acceptance criteria
+- [ ] Story status updated to "In progress" (77)
+
+## Outputs
+
+1. Story file in `_bmad-output/implementation-artifacts/`
+2. All tasks created in OpenProject
+3. Story marked as "In progress" (ready for Dev)
+
+## Integration with Other Workflows
+
+- **create-story:** Creates story, then calls groom-story
+- **sprint-planning:** Grooms stories for sprint, creates tasks
+- **dev-story:** Verifies tasks exist before starting implementation
+
+## References
+
+- **Workflow Requirement:** `docs/WORKFLOW_TASK_CREATION_REQUIREMENT.md`
+- **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`
+- **QA Testing Workflow:** `docs/QA_TESTING_WORKFLOW.md`
+- **Complete Agile Workflow:** `docs/COMPLETE_AGILE_WORKFLOW.md`
+- **PM Agent:** `@bmad/bmm/agents/pm`
