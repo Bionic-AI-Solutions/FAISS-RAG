@@ -1323,3 +1323,266 @@ async def _validate_index_integrity(tenant_id: UUID, expected_size: int) -> bool
         )
         return False
 
+
+@mcp_server.tool()
+async def rag_validate_backup(
+    tenant_id: str,
+    backup_id: str,
+    validation_type: str = "full",
+) -> Dict[str, Any]:
+    """
+    Validate backup integrity and completeness.
+    
+    This tool allows platform operators to validate backup integrity before restore operations.
+    It checks manifest validity, file existence, file integrity (checksums), and backup completeness.
+    
+    Args:
+        tenant_id: Tenant UUID (string format)
+        backup_id: Identifier of the backup to validate (e.g., "backup_UUID_TIMESTAMP")
+        validation_type: Type of validation ("full", "integrity", "completeness").
+                         "full" performs all validations.
+                         "integrity" only validates checksums.
+                         "completeness" only validates that all required components are present.
+    
+    Returns:
+        Dictionary containing:
+        - tenant_id: Tenant ID
+        - backup_id: Backup ID validated
+        - validation_type: Type of validation performed
+        - timestamp: Validation completion timestamp
+        - status: Overall validation status ("passed", "failed", "partial")
+        - report: Detailed validation report with component-level status
+        
+    Raises:
+        AuthorizationError: If user doesn't have permission
+        ValidationError: If tenant_id, backup_id, or validation_type is invalid
+        ResourceNotFoundError: If tenant or backup not found
+    """
+    # Check permissions
+    role = check_tool_permission("rag_validate_backup")
+    if role not in {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN}:
+        raise AuthorizationError("Access denied: Only Uber Admin and Tenant Admin roles can validate backups.")
+    
+    try:
+        tenant_uuid = UUID(tenant_id)
+    except ValueError:
+        raise ValidationError(f"Invalid tenant_id format: {tenant_id}", field="tenant_id")
+    
+    if validation_type not in {"full", "integrity", "completeness"}:
+        raise ValidationError(
+            f"Invalid validation_type: {validation_type}. Must be 'full', 'integrity', or 'completeness'.",
+            field="validation_type"
+        )
+    
+    # Locate the backup directory
+    backup_dir = BACKUP_BASE_DIR / backup_id
+    if not backup_dir.is_dir():
+        raise ResourceNotFoundError(f"Backup with ID {backup_id} not found at {backup_dir}", resource_id=backup_id)
+    
+    logger.info(
+        "Starting backup validation",
+        tenant_id=tenant_id,
+        backup_id=backup_id,
+        validation_type=validation_type,
+    )
+    
+    validation_report: Dict[str, Any] = {
+        "manifest": {"status": "pending", "details": {}},
+        "file_existence": {"status": "pending", "details": {}},
+        "file_integrity": {"status": "pending", "details": {}},
+        "completeness": {"status": "pending", "details": {}},
+    }
+    
+    overall_status = "passed"
+    
+    try:
+        # 1. Validate backup manifest
+        manifest_file = backup_dir / "manifest.json"
+        if not manifest_file.exists():
+            validation_report["manifest"]["status"] = "failed"
+            validation_report["manifest"]["details"]["error"] = "Manifest file not found"
+            overall_status = "failed"
+        else:
+            try:
+                with open(manifest_file, "r") as f:
+                    manifest = json.load(f)
+                
+                # Validate manifest structure
+                required_fields = ["tenant_id", "backup_id", "timestamp", "components"]
+                missing_fields = [field for field in required_fields if field not in manifest]
+                
+                if missing_fields:
+                    validation_report["manifest"]["status"] = "failed"
+                    validation_report["manifest"]["details"]["error"] = f"Missing required fields: {missing_fields}"
+                    overall_status = "failed"
+                elif UUID(manifest["tenant_id"]) != tenant_uuid:
+                    validation_report["manifest"]["status"] = "failed"
+                    validation_report["manifest"]["details"]["error"] = f"Tenant ID mismatch. Expected {tenant_id}, got {manifest['tenant_id']}."
+                    overall_status = "failed"
+                else:
+                    validation_report["manifest"]["status"] = "passed"
+                    validation_report["manifest"]["details"]["backup_timestamp"] = manifest.get("timestamp")
+                    validation_report["manifest"]["details"]["backup_type"] = manifest.get("backup_type", "unknown")
+            except json.JSONDecodeError as e:
+                validation_report["manifest"]["status"] = "failed"
+                validation_report["manifest"]["details"]["error"] = f"Invalid JSON in manifest: {str(e)}"
+                overall_status = "failed"
+                manifest = None
+            except Exception as e:
+                validation_report["manifest"]["status"] = "failed"
+                validation_report["manifest"]["details"]["error"] = f"Error reading manifest: {str(e)}"
+                overall_status = "failed"
+                manifest = None
+        
+        # If manifest validation failed, we can't continue with other validations
+        if validation_report["manifest"]["status"] == "failed" and validation_type in {"full", "completeness"}:
+            return {
+                "tenant_id": tenant_id,
+                "backup_id": backup_id,
+                "validation_type": validation_type,
+                "timestamp": datetime.now().isoformat(),
+                "status": overall_status,
+                "report": validation_report,
+            }
+        
+        # Use manifest if available, otherwise skip file-based validations
+        if manifest is None:
+            manifest = {}
+        
+        # 2. Validate backup file existence (if validation_type includes it)
+        if validation_type in {"full", "completeness"}:
+            components = manifest.get("components", {})
+            missing_files = []
+            existing_files = []
+            
+            for component_name, component_info in components.items():
+                file_path_str = component_info.get("file_path")
+                if file_path_str:
+                    file_path = Path(file_path_str)
+                    if file_path.exists() and file_path.is_file():
+                        existing_files.append(component_name)
+                    else:
+                        missing_files.append(component_name)
+                        validation_report["file_existence"]["details"][component_name] = {
+                            "status": "missing",
+                            "expected_path": file_path_str,
+                        }
+            
+            if missing_files:
+                validation_report["file_existence"]["status"] = "failed"
+                validation_report["file_existence"]["details"]["missing_components"] = missing_files
+                if overall_status == "passed":
+                    overall_status = "partial"
+            else:
+                validation_report["file_existence"]["status"] = "passed"
+                validation_report["file_existence"]["details"]["all_files_exist"] = True
+                validation_report["file_existence"]["details"]["components_checked"] = list(components.keys())
+        
+        # 3. Validate backup file integrity (checksums) (if validation_type includes it)
+        if validation_type in {"full", "integrity"}:
+            components = manifest.get("components", {})
+            integrity_failures = []
+            integrity_passed = []
+            
+            for component_name, component_info in components.items():
+                file_path_str = component_info.get("file_path")
+                expected_checksum = component_info.get("checksum")
+                
+                if file_path_str and expected_checksum:
+                    file_path = Path(file_path_str)
+                    if file_path.exists():
+                        try:
+                            actual_checksum = calculate_file_checksum(file_path)
+                            if actual_checksum == expected_checksum:
+                                integrity_passed.append(component_name)
+                                validation_report["file_integrity"]["details"][component_name] = {
+                                    "status": "passed",
+                                    "checksum_match": True,
+                                }
+                            else:
+                                integrity_failures.append(component_name)
+                                validation_report["file_integrity"]["details"][component_name] = {
+                                    "status": "failed",
+                                    "checksum_match": False,
+                                    "expected_checksum": expected_checksum,
+                                    "actual_checksum": actual_checksum,
+                                }
+                        except Exception as e:
+                            integrity_failures.append(component_name)
+                            validation_report["file_integrity"]["details"][component_name] = {
+                                "status": "error",
+                                "error": str(e),
+                            }
+                    else:
+                        integrity_failures.append(component_name)
+                        validation_report["file_integrity"]["details"][component_name] = {
+                            "status": "missing",
+                            "error": "File not found for checksum validation",
+                        }
+            
+            if integrity_failures:
+                validation_report["file_integrity"]["status"] = "failed"
+                validation_report["file_integrity"]["details"]["failed_components"] = integrity_failures
+                overall_status = "failed"
+            else:
+                validation_report["file_integrity"]["status"] = "passed"
+                validation_report["file_integrity"]["details"]["components_validated"] = integrity_passed
+        
+        # 4. Validate backup completeness (all required components present)
+        if validation_type in {"full", "completeness"}:
+            components = manifest.get("components", {})
+            required_components = ["postgresql", "faiss", "minio", "meilisearch"]
+            present_components = []
+            missing_components = []
+            
+            for component in required_components:
+                if component in components and components[component].get("file_path"):
+                    present_components.append(component)
+                else:
+                    missing_components.append(component)
+            
+            if missing_components:
+                validation_report["completeness"]["status"] = "failed"
+                validation_report["completeness"]["details"]["missing_components"] = missing_components
+                validation_report["completeness"]["details"]["present_components"] = present_components
+                if overall_status == "passed":
+                    overall_status = "partial"
+            else:
+                validation_report["completeness"]["status"] = "passed"
+                validation_report["completeness"]["details"]["all_components_present"] = True
+                validation_report["completeness"]["details"]["components"] = present_components
+        
+        logger.info(
+            "Backup validation completed",
+            tenant_id=tenant_id,
+            backup_id=backup_id,
+            validation_type=validation_type,
+            status=overall_status,
+        )
+        
+        return {
+            "tenant_id": tenant_id,
+            "backup_id": backup_id,
+            "validation_type": validation_type,
+            "timestamp": datetime.now().isoformat(),
+            "status": overall_status,
+            "report": validation_report,
+        }
+        
+    except Exception as e:
+        logger.error(
+            "Backup validation failed",
+            tenant_id=tenant_id,
+            backup_id=backup_id,
+            error=str(e),
+        )
+        return {
+            "tenant_id": tenant_id,
+            "backup_id": backup_id,
+            "validation_type": validation_type,
+            "timestamp": datetime.now().isoformat(),
+            "status": "failed",
+            "report": validation_report,
+            "error": str(e),
+        }
+
