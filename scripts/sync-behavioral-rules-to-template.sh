@@ -134,6 +134,39 @@ for SOURCE_FILE in $BEHAVIORAL_FILES; do
     SYNCED_COUNT=$((SYNCED_COUNT + 1))
 done
 
+# Also sync the sync script itself to the template repository
+echo ""
+echo -e "${GREEN}Syncing sync script to template repository...${NC}"
+SYNC_SCRIPT_SOURCE="${SOURCE_DIR}/scripts/sync-behavioral-rules-to-template.sh"
+SYNC_SCRIPT_TARGET="${VIRGIN_REPO_DIR}/scripts/sync-behavioral-rules-to-template.sh"
+
+if [ "$DRY_RUN" = false ]; then
+    mkdir -p "${VIRGIN_REPO_DIR}/scripts"
+else
+    echo -e "${BLUE}[DRY RUN] Would create directory: ${VIRGIN_REPO_DIR}/scripts${NC}"
+fi
+
+if [ -f "${SYNC_SCRIPT_TARGET}" ]; then
+    if ! cmp -s "${SYNC_SCRIPT_SOURCE}" "${SYNC_SCRIPT_TARGET}"; then
+        echo -e "${YELLOW}  📝 Updating sync script${NC}"
+        if [ "$DRY_RUN" = false ]; then
+            cp "${SYNC_SCRIPT_SOURCE}" "${SYNC_SCRIPT_TARGET}"
+            chmod +x "${SYNC_SCRIPT_TARGET}"
+        fi
+        UPDATED_COUNT=$((UPDATED_COUNT + 1))
+    else
+        echo -e "${GREEN}  ✓ Sync script unchanged${NC}"
+    fi
+else
+    echo -e "${BLUE}  ➕ Adding sync script to template${NC}"
+    if [ "$DRY_RUN" = false ]; then
+        cp "${SYNC_SCRIPT_SOURCE}" "${SYNC_SCRIPT_TARGET}"
+        chmod +x "${SYNC_SCRIPT_TARGET}"
+    fi
+    NEW_COUNT=$((NEW_COUNT + 1))
+fi
+SYNCED_COUNT=$((SYNCED_COUNT + 1))
+
 echo ""
 echo -e "${BLUE}=============================================================================${NC}"
 echo -e "${GREEN}Sync Summary:${NC}"
@@ -161,12 +194,14 @@ if [ "$DRY_RUN" = false ] && [ $((NEW_COUNT + UPDATED_COUNT)) -gt 0 ]; then
     cd "${VIRGIN_REPO_DIR}"
     
     git add "${TARGET_DIR}"/*.mdc
+    git add "${VIRGIN_REPO_DIR}/scripts/sync-behavioral-rules-to-template.sh" 2>/dev/null || true
     
     COMMIT_MSG="chore: sync behavioral rules from mem0-rag project
 
-Synced behavioral rules to ensure new projects get latest improvements:
+Synced behavioral rules and sync script to ensure new projects get latest improvements:
 - Updated: ${UPDATED_COUNT} files
 - New: ${NEW_COUNT} files
+- Includes: Behavioral rules (_bmad/integrations/*.mdc) and sync script
 
 Source: ${SOURCE_DIR}
 Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"

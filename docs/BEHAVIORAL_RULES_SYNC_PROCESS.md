@@ -16,10 +16,16 @@
 - `qa-workflow.mdc` - QA testing and story closure workflow
 - Any other `.mdc` files in `_bmad/integrations/`
 
+**Sync Script** (`scripts/sync-behavioral-rules-to-template.sh`):
+- The sync script itself is also synced to the template repository
+- This allows future projects to sync their behavioral rule improvements back to the template
+- Projects can contribute their learnings back to benefit all future projects
+
 **Why These Files:**
 - These are **behavioral rules** that define HOW agents work
 - They are **alwaysApply: true** - automatically loaded by all agents
 - They represent **learned best practices** that should be in all projects from day one
+- The sync script enables **bidirectional learning** - projects can contribute improvements back
 
 ## When to Sync
 
