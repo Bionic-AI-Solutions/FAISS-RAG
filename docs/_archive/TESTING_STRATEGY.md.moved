@@ -1,0 +1,173 @@
+# Testing Strategy: Unit Tests + Integration Tests
+
+**Last Updated:** 2026-01-07  
+**Status:** MANDATORY REQUIREMENT
+
+## Overview
+
+**Every story MUST have both unit tests AND integration tests** to ensure components work correctly in isolation AND in real-life scenarios.
+
+## Why Both?
+
+### Unit Tests (with Mocks)
+- ✅ **Fast execution** - No external dependencies, runs in milliseconds
+- ✅ **Isolated testing** - Test code logic without external services
+- ✅ **Easy debugging** - Failures point directly to code issues
+- ✅ **Test edge cases** - Easy to simulate error conditions
+- ✅ **Consistent with codebase** - All unit tests use mocks (Meilisearch, Mem0, Redis)
+
+### Integration Tests (with Real Services)
+- ✅ **Real-world validation** - Components work with actual services
+- ✅ **Catch integration issues** - Service compatibility, configuration problems
+- ✅ **Performance validation** - Real performance metrics (<150ms p95, etc.)
+- ✅ **End-to-end workflows** - Complete user journeys work correctly
+- ✅ **Production readiness** - Confidence that code works in production
+
+## Test Structure
+
+### Unit Tests
+**Location:** `tests/unit/test_<component>.py`
+
+**Pattern:**
+```python
+# Mock external services
+with patch("app.services.faiss_manager.faiss", create=True):
+    # Test our logic
+    results = service.search(...)
+    assert results == expected
+```
+
+**What to Test:**
+- Business logic and data transformations
+- Tenant isolation and security
+- Error handling and edge cases
+- Input validation
+- Result processing and ranking
+
+### Integration Tests
+**Location:** `tests/integration/test_<component>_integration.py`
+
+**Pattern:**
+```python
+# Use real services
+async def test_search_with_real_faiss():
+    # Create real FAISS index
+    index = faiss.IndexFlatL2(384)
+    # Add real documents
+    # Perform real search
+    # Verify results
+```
+
+**What to Test:**
+- End-to-end workflows
+- Service integration points
+- Performance requirements
+- Real-world scenarios
+- Service compatibility
+
+## Example: Story 4.1 FAISS Vector Search
+
+### Unit Tests Created
+- `tests/unit/test_faiss_search.py` - FAISSIndexManager.search() with mocked index
+- `tests/unit/test_vector_search_service.py` - VectorSearchService with mocked FAISS
+
+**Tests:**
+- ✅ Search with valid query embedding
+- ✅ Search with empty index
+- ✅ Tenant isolation (cross-tenant access prevention)
+- ✅ Similarity score conversion (L2, Inner Product)
+- ✅ Error handling (invalid dimensions, missing index)
+- ✅ Result ranking and filtering
+
+### Integration Tests Needed
+- `tests/integration/test_faiss_vector_search_integration.py` - Real FAISS indices
+
+**Tests:**
+- ✅ Create real FAISS index
+- ✅ Add real document embeddings
+- ✅ Perform real vector search
+- ✅ Verify performance (<150ms p95)
+- ✅ Verify search accuracy (>90% relevant results in top 5)
+- ✅ Test with real tenant isolation
+
+## Workflow Integration
+
+### During Task Implementation
+
+1. **Write unit tests first** (TDD approach)
+   - Mock external services
+   - Test all code paths
+   - Verify logic correctness
+
+2. **Write integration tests**
+   - Use real services
+   - Test end-to-end workflows
+   - Verify performance requirements
+
+3. **Run both test suites**
+   ```bash
+   # Unit tests (fast, no services needed)
+   python3 -m pytest tests/unit/test_<component>.py -v
+   
+   # Integration tests (requires services)
+   python3 -m pytest tests/integration/test_<component>_integration.py -v
+   ```
+
+### Before Task Completion
+
+- [ ] All unit tests pass
+- [ ] All integration tests pass
+- [ ] Test coverage meets requirements (>80%)
+- [ ] Performance requirements validated (integration tests)
+- [ ] Update task status to "In testing" (79)
+
+### Test Team Validation
+
+- [ ] Review unit test coverage
+- [ ] Review integration test coverage
+- [ ] Run both test suites
+- [ ] Verify acceptance criteria covered
+- [ ] Verify performance requirements met
+
+## Best Practices
+
+### Unit Tests
+- **Mock at the service boundary** - Mock FAISS, Meilisearch, Redis, not internal functions
+- **Test one thing at a time** - Each test should verify one behavior
+- **Use descriptive test names** - `test_search_tenant_isolation_cross_tenant_access_prevented`
+- **Test edge cases** - Empty inputs, missing data, error conditions
+
+### Integration Tests
+- **Use real services** - FAISS indices, Meilisearch, Redis, databases
+- **Test complete workflows** - End-to-end user journeys
+- **Validate performance** - Measure actual response times
+- **Test with real data** - Use realistic test data
+- **Clean up after tests** - Remove test indices, clear test data
+
+## Test Organization
+
+```
+tests/
+├── unit/                          # Unit tests (with mocks)
+│   ├── test_faiss_search.py
+│   ├── test_vector_search_service.py
+│   ├── test_keyword_search_service.py
+│   └── test_hybrid_search_service.py
+│
+├── integration/                   # Integration tests (with real services)
+│   ├── test_faiss_vector_search_integration.py
+│   ├── test_meilisearch_keyword_search_integration.py
+│   ├── test_hybrid_search_integration.py
+│   └── test_rag_search_tool_integration.py
+│
+└── fixtures/                      # Test fixtures
+    ├── faiss_indices.py          # FAISS index fixtures
+    └── test_data.py              # Test data generators
+```
+
+## Related Documentation
+
+- `docs/TESTING_PRINCIPLES.md` - Testing principles and alignment
+- `docs/DEV_TESTING_RULE.md` - When to run tests
+- `docs/QA_TESTING_WORKFLOW.md` - Complete QA workflow
+
