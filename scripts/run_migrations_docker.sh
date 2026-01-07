@@ -36,3 +36,10 @@ echo "📊 Verifying tables created..."
 docker compose -f docker/docker-compose.yml exec -T postgres \
     psql -U postgres -d mem0_rag_db -c "\dt"
 
+
+
+
+
+
+
+

@@ -118,13 +118,12 @@ async def rag_register_tenant(
                     raise ValueError(f"Tenant with domain {domain} already exists.")
             
             # Create tenant record
-            tenant = Tenant(
+            tenant = await tenant_repo.create(
                 tenant_id=tenant_uuid,
                 name=tenant_name,
                 domain=domain,
                 subscription_tier="basic",  # Default tier
             )
-            await tenant_repo.create(tenant)
             
             # Extract template default configuration
             template_config = template.default_configuration or {}
@@ -146,7 +145,7 @@ async def rag_register_tenant(
                     "llm_model": final_config.get("llm_model"),
                 }
             
-            tenant_config = TenantConfig(
+            tenant_config = await tenant_config_repo.create(
                 tenant_id=tenant_uuid,
                 template_id=template_uuid,
                 model_configuration=model_config,
@@ -156,7 +155,6 @@ async def rag_register_tenant(
                 audit_logging_config=final_config.get("audit_logging") or {},
                 custom_configuration=custom_configuration,
             )
-            await tenant_config_repo.create(tenant_config)
             
             # Initialize tenant-scoped resources
             resources_created = []

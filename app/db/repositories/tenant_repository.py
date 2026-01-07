@@ -52,3 +52,10 @@ class TenantRepository(BaseRepository[Tenant]):
 
 
 
+
+
+
+
+
+
+

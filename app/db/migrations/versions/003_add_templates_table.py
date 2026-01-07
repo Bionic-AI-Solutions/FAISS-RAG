@@ -124,3 +124,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_templates_template_name'), table_name='templates')
     op.drop_table('templates')
 
+
+
+
+
+
+
+

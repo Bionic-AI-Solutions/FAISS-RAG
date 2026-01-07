@@ -131,3 +131,10 @@ To fully verify RLS enforcement, integration tests should:
 All RLS policies are correctly configured and enforced. The tenant extraction middleware ensures that PostgreSQL session variables are set before any database queries execute, enabling RLS to automatically filter results by tenant_id.
 
 
+
+
+
+
+
+
+

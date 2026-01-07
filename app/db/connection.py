@@ -79,17 +79,37 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         try:
             # Set PostgreSQL session variables for RLS enforcement
+            # Note: These use PostgreSQL's custom_variable_classes or custom GUCs
+            # The variables are referenced in RLS policies but may not exist yet
             tenant_id = get_tenant_id_from_context()
             role = get_role_from_context()
             
             if tenant_id:
+                # Set PostgreSQL custom variable for RLS
+                # Use quoted identifier to handle dots in variable name
+                # SET LOCAL doesn't support parameters, so we use string formatting
+                # The tenant_id is a UUID, so it's safe to format directly
                 await session.execute(
-                    text(f"SET LOCAL app.current_tenant_id = '{tenant_id}'")
+                    text(f'SET LOCAL "app.current_tenant_id" = \'{tenant_id}\'')
                 )
             
             if role:
+                # get_role_from_context() returns Optional[str], but context may contain enum
+                # Convert to string value for PostgreSQL
+                from app.mcp.middleware.rbac import UserRole
+                if isinstance(role, UserRole):
+                    role_str = role.value
+                elif isinstance(role, str):
+                    role_str = role
+                else:
+                    role_str = str(role)
+                
+                # Set role variable - used by RLS policies for Uber Admin bypass
+                # Use quoted identifier to handle dots in variable name
+                # SET LOCAL doesn't support parameters, so we use string formatting
+                # The role_str is a controlled enum value, so it's safe to format directly
                 await session.execute(
-                    text(f"SET LOCAL app.current_role = '{role}'")
+                    text(f'SET LOCAL "app.current_role" = \'{role_str}\'')
                 )
             
             yield session

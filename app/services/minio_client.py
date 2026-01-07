@@ -5,6 +5,7 @@ MinIO (S3-compatible) client setup with tenant-scoped bucket configuration.
 from typing import Optional
 from uuid import UUID
 
+import structlog
 from minio import Minio
 from minio.error import S3Error
 
@@ -15,6 +16,8 @@ from app.utils.minio_buckets import (
     TenantIsolationError,
 )
 from app.mcp.middleware.tenant import get_tenant_id_from_context
+
+logger = structlog.get_logger(__name__)
 
 
 # Global MinIO client instance

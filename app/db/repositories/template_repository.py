@@ -73,3 +73,10 @@ class TemplateRepository(BaseRepository[Template]):
         """
         return await self.get_all(skip=skip, limit=limit)
 
+
+
+
+
+
+
+

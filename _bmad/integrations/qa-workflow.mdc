@@ -1,0 +1,284 @@
+---
+description: QA Testing & Story Closure Workflow (MANDATORY)
+globs:
+alwaysApply: true
+---
+
+# QA Testing & Story Closure Workflow
+
+**Status:** MANDATORY WORKFLOW  
+**Applies To:** All agents (Dev, Test Team, TEA, PM)
+
+## Overview
+
+This workflow defines the complete process for task validation, story validation, bug management, and story/epic closure. It ensures quality gates are met before stories and epics are closed.
+
+## Complete Workflow: Task → Story → Epic Closure
+
+```
+Task Implementation
+    ↓
+Task Testing (Dev) - Unit + Integration Tests
+    ↓
+Task Validation (Test Team) - Unit + Integration Tests
+    ↓
+All Tasks Complete?
+    ↓ YES
+Story Testing (Dev) - Unit + Integration Tests
+    ↓
+Story Validation (Test Team) - Unit + Integration Tests
+    ↓
+Bugs Found?
+    ↓ YES → Create Bug → Assign to Dev → Fix → Test Validate (Iterate)
+    ↓ NO
+Close Story
+    ↓
+All Stories Complete?
+    ↓ YES
+Close Epic/Feature
+```
+
+## Phase 1: Task Validation
+
+### Step 1: Dev Completes Task
+
+**Dev Actions:**
+1. Complete task implementation
+2. **Write unit tests** (with mocks) - Test logic in isolation
+3. **Write integration tests** (with real services) - Test real-life scenarios
+4. Run unit tests
+5. Run integration tests
+6. Update task status to "In testing" (79)
+7. Add comment with test results (both unit and integration)
+
+### Step 2: Test Team Validates Task
+
+**Test Team Actions:**
+1. Review task implementation
+2. **Run unit test suite** for task (with mocks)
+3. **Run integration test suite** for task (with real services)
+4. Verify acceptance criteria met
+5. Verify code quality standards
+6. Verify both unit and integration tests pass
+7. Update task status:
+   - **"Closed" (82)** if validation passes
+   - **"Test failed" (81)** if validation fails → Create bug
+
+## Phase 2: Story Validation
+
+### Step 1: All Tasks Complete
+
+**Prerequisites:**
+- All tasks in story are "Closed" (82)
+- All task validations passed
+
+### Step 2: Dev Marks Story Ready for Testing
+
+**Dev Actions:**
+1. Verify all tasks are closed
+2. **Run unit test suite** (with mocks) - Verify logic correctness
+3. **Run integration test suite** (with real services) - Verify real-life scenarios
+4. Update story status to "In testing" (79)
+5. Add comment with test results (both unit and integration)
+
+### Step 3: Test Team Validates Story
+
+**Test Team Actions:**
+1. Review all task implementations
+2. **Run unit test suite** (with mocks) - Verify logic and edge cases
+3. **Run integration test suite** (with real services) - Verify real-world functionality
+4. Verify all acceptance criteria met
+5. Verify integration with other stories
+6. Verify code quality and architecture patterns
+7. Verify performance requirements (integration tests)
+8. Update story status:
+   - **"Closed" (82)** if validation passes
+   - **"Test failed" (81)** if validation fails → Create bug
+
+## Phase 3: Bug Management & Iteration
+
+### Step 1: Create Bug (Test Team)
+
+**When:** Task or story validation fails
+
+**Test Team Actions:**
+1. Create bug work package in OpenProject
+2. Link bug to story (parent relationship)
+3. Add detailed bug description
+4. Set bug priority (High 74, Normal 73, Low 72)
+5. Assign bug to Dev
+6. Set bug status to "New" (71)
+
+### Step 2: Dev Fixes Bug
+
+**Dev Actions:**
+1. Review bug description
+2. Investigate issue
+3. Implement fix
+4. Run unit tests
+5. Run integration tests
+6. Update bug status to "In testing" (79)
+7. Add comment with fix details
+
+### Step 3: Test Team Validates Bug Fix
+
+**Test Team Actions:**
+1. Review fix
+2. Re-run unit tests
+3. Re-run integration tests
+4. Verify bug is resolved
+5. Verify no regressions
+6. Update bug status:
+   - **"Closed" (82)** if fix validated
+   - **"Test failed" (81)** if fix incomplete → Iterate
+
+### Step 4: Iterate Until All Bugs Fixed
+
+**Process:**
+1. Test team validates bug fix
+2. If validation fails → Bug status "Test failed" (81)
+3. Dev fixes again → Bug status "In testing" (79)
+4. Test team validates again
+5. Repeat until bug is "Closed" (82)
+
+## Phase 4: Story Closure
+
+### Prerequisites for Story Closure
+
+**All of the following must be true:**
+1. ✅ All tasks are "Closed" (82)
+2. ✅ All bugs are "Closed" (82)
+3. ✅ Story validation passed
+4. ✅ All acceptance criteria met
+5. ✅ Test team approval
+
+### Story Closure Process
+
+**Test Team Actions:**
+1. Verify all tasks closed
+2. Verify all bugs closed
+3. Run final story validation (unit + integration tests)
+4. Verify all acceptance criteria met
+5. **Create verification doc** in `_bmad-output/implementation-artifacts/story-{id}-verification.md`
+   - Document all acceptance criteria verification
+   - Include unit test results summary
+   - Include integration test results summary
+   - Document performance validation (if applicable)
+6. **Copy verification doc** to `docs/STORY_{ID}_VERIFICATION.md`
+7. **Attach verification doc to Story work package** via OpenProject MCP
+8. Close story (status 82)
+
+## Phase 5: Epic/Feature Closure
+
+### Prerequisites for Epic Closure
+
+**All of the following must be true:**
+1. ✅ All stories in epic are "Closed" (82)
+2. ✅ All tasks in all stories are "Closed" (82)
+3. ✅ All bugs in all stories are "Closed" (82)
+4. ✅ Epic validation passed
+
+### Epic Closure Process
+
+**Test Team Actions:**
+1. Verify all stories closed
+2. Verify all tasks closed
+3. Verify all bugs closed
+4. Run epic-level integration tests
+5. Close epic
+
+## Status Flow
+
+### Task Status Flow
+```
+New (71) 
+    ↓
+In progress (77) [Dev starts work]
+    ↓
+In testing (79) [Dev completes, ready for test]
+    ↓
+Closed (82) [Test validates] OR Test failed (81) [Create bug]
+```
+
+### Story Status Flow
+```
+New (71)
+    ↓
+In progress (77) [PM grooms, creates tasks]
+    ↓
+In testing (79) [All tasks closed, ready for test]
+    ↓
+Closed (82) [Test validates] OR Test failed (81) [Create bugs]
+```
+
+### Bug Status Flow
+```
+New (71) [Test team creates]
+    ↓
+In progress (77) [Dev fixes]
+    ↓
+In testing (79) [Dev completes fix]
+    ↓
+Closed (82) [Test validates] OR Test failed (81) [Iterate]
+```
+
+## Role Responsibilities
+
+### Product Manager (PM)
+**During Grooming:**
+- Create story file
+- Break down into tasks
+- Create tasks in OpenProject
+- Verify tasks are created
+- Mark story "In progress" only after tasks created
+
+### Developer (Dev)
+**During Implementation:**
+- Verify tasks exist before starting
+- Write unit tests (with mocks)
+- Write integration tests (with real services)
+- Run both test suites
+- Update task status as work progresses
+- Mark tasks "In testing" when complete
+- Fix bugs assigned by test team
+- Mark bugs "In testing" after fix
+- Mark story "In testing" when all tasks complete
+
+### Test Team / TEA Agent
+**During Validation:**
+- Validate each task when marked "In testing"
+- Run unit test suite (with mocks)
+- Run integration test suite (with real services)
+- Close tasks that pass validation
+- Create bugs for tasks that fail validation
+- Validate story when all tasks complete
+- Validate bug fixes
+- Close story when all tasks and bugs closed
+- Close epic when all stories closed
+
+## Checklist Templates
+
+### Task Validation Checklist (Test Team)
+- [ ] Task implementation reviewed
+- [ ] **Unit tests pass** (with mocks) - Logic and edge cases validated
+- [ ] **Integration tests pass** (with real services) - Real-world scenarios validated
+- [ ] Acceptance criteria met
+- [ ] Code quality standards met
+- [ ] Performance requirements validated (integration tests)
+- [ ] Task status updated (Closed or Test failed)
+
+### Story Validation Checklist (Test Team)
+- [ ] All tasks closed
+- [ ] All acceptance criteria met
+- [ ] **Unit tests pass** (with mocks) - Logic validated
+- [ ] **Integration tests pass** (with real services) - Real-world functionality validated
+- [ ] Performance requirements validated (integration tests)
+- [ ] No regressions
+- [ ] Code follows architecture patterns
+- [ ] Story status updated (Closed or Test failed)
+
+## References
+
+- **Testing Strategy:** `_bmad/integrations/testing-strategy.mdc`
+- **Story Verification:** `_bmad/workflows/STORY_VERIFICATION_STANDARD.md`
+- **OpenProject Integration:** `_bmad/integrations/openproject/workflow.md`

@@ -90,3 +90,10 @@ docker compose -f docker/docker-compose.yml exec -T postgres \
 echo ""
 echo "✅ Migration execution complete!"
 
+
+
+
+
+
+
+

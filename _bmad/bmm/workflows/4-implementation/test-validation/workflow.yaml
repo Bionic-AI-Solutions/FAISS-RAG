@@ -113,17 +113,30 @@ This workflow supports validation at different levels:
    - "Closed" (82) if validated
    - "Test failed" (81) if incomplete → Dev fixes again, iterate
 
-### Step 5: Story Closure
+### Step 5: Story Closure + Verification Documentation
 
 **Prerequisites:**
 - ✅ All tasks "Closed" (82)
 - ✅ All bugs "Closed" (82)
 - ✅ Story validation passed
+- ✅ All acceptance criteria met
+- ✅ Test team approval
 
 **Process:**
 1. Verify all prerequisites
-2. Close story (status 82)
-3. Add final comment summarizing completion
+2. **Create verification doc** in `_bmad-output/implementation-artifacts/story-{id}-verification.md`
+   - Document all acceptance criteria verification
+   - Include unit test results summary
+   - Include integration test results summary
+   - Document performance validation (if applicable)
+   - Include any architectural compliance notes
+3. **Copy verification doc** to `docs/STORY_{ID}_VERIFICATION.md`
+   - Maintain same content, ensure proper formatting for OpenProject attachment
+4. **Attach verification doc to Story work package** via OpenProject MCP
+   - Use `mcp_openproject_add_work_package_attachment()` or OpenProject UI/API
+   - Document: "Story Verification Documentation"
+5. Close story (status 82)
+6. Add final comment summarizing completion with verification doc reference
 
 ### Step 6: Epic Closure
 
@@ -181,9 +194,14 @@ This workflow supports validation at different levels:
 ## REFERENCES
 
 - **Story Verification Standard:** `_bmad/workflows/STORY_VERIFICATION_STANDARD.md`
-- **QA Testing Workflow:** `docs/QA_TESTING_WORKFLOW.md`
-- **Complete Agile Workflow:** `docs/COMPLETE_AGILE_WORKFLOW.md`
+- **QA Workflow:** `_bmad/integrations/qa-workflow.mdc` (MANDATORY - automatically loaded)
+- **Testing Strategy:** `_bmad/integrations/testing-strategy.mdc` (MANDATORY - automatically loaded)
 - **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`
+
+
+
+
+
 
 
 

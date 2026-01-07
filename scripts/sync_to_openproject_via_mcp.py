@@ -84,3 +84,10 @@ print("These scripts can be adapted to use MCP tools if you have MCP client acce
 
 
 
+
+
+
+
+
+
+

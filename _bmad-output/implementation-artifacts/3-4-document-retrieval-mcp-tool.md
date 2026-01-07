@@ -40,3 +40,10 @@ All tasks completed. The `rag_get_document` MCP tool has been implemented with:
 - MinIO content retrieval via `get_document_content`
 - Comprehensive unit tests
 
+
+
+
+
+
+
+

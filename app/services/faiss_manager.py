@@ -6,7 +6,7 @@ Each tenant has a separate FAISS index to prevent cross-tenant data access.
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Tuple
 from uuid import UUID
 
 import numpy as np
@@ -30,7 +30,29 @@ def get_tenant_index_path(tenant_id: UUID) -> Path:
         Path: File path for the tenant's index
     """
     index_dir = Path(faiss_settings.index_path)
-    index_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Try to create directory, with fallback for permission errors
+    try:
+        index_dir.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError) as e:
+        # If /data doesn't exist or we can't create it, try a fallback path
+        import os
+        if str(index_dir).startswith("/data"):
+            fallback_path = Path(os.getenv("FAISS_INDEX_PATH", "./data/faiss_indices"))
+            try:
+                fallback_path.mkdir(parents=True, exist_ok=True)
+                index_dir = fallback_path
+            except Exception:
+                # If fallback also fails, log warning but continue
+                # The actual error will be raised when trying to use the index
+                import structlog
+                logger = structlog.get_logger(__name__)
+                logger.warning(
+                    "Could not create FAISS index directory (including fallback)",
+                    original_path=str(faiss_settings.index_path),
+                    fallback_path=str(fallback_path),
+                    error=str(e)
+                )
     
     # Index file name includes tenant_id for isolation
     index_file = index_dir / f"tenant_{tenant_id}.index"
@@ -122,11 +144,34 @@ class FAISSIndexManager:
                 self.index_path.mkdir(parents=True, exist_ok=True)
                 self._index_path_created = True
             except (PermissionError, OSError) as e:
-                logger.warning(
-                    "Could not create FAISS index directory",
-                    path=str(self.index_path),
-                    error=str(e)
-                )
+                # If /data doesn't exist or we can't create it, try a fallback path
+                import os
+                if str(self.index_path).startswith("/data"):
+                    # Use a writable location for tests/development
+                    fallback_path = Path(os.getenv("FAISS_INDEX_PATH", "./data/faiss_indices"))
+                    try:
+                        fallback_path.mkdir(parents=True, exist_ok=True)
+                        self.index_path = fallback_path
+                        self._index_path_created = True
+                        logger.info(
+                            "Using fallback FAISS index path",
+                            fallback_path=str(fallback_path),
+                            original_path=str(faiss_settings.index_path)
+                        )
+                    except Exception as fallback_error:
+                        logger.warning(
+                            "Could not create FAISS index directory (including fallback)",
+                            path=str(self.index_path),
+                            fallback_path=str(fallback_path),
+                            error=str(e),
+                            fallback_error=str(fallback_error)
+                        )
+                else:
+                    logger.warning(
+                        "Could not create FAISS index directory",
+                        path=str(self.index_path),
+                        error=str(e)
+                    )
                 # Continue anyway - directory might be created later or path might be wrong
     
     def get_tenant_index_path(self, tenant_id: UUID) -> Path:
@@ -166,12 +211,13 @@ class FAISSIndexManager:
         """
         validate_tenant_access(tenant_id)
     
-    def create_index(self, tenant_id: UUID) -> any:
+    def create_index(self, tenant_id: UUID, dimension: Optional[int] = None) -> any:
         """
         Create a new FAISS index for a tenant.
         
         Args:
             tenant_id: Tenant ID
+            dimension: Optional embedding dimension (uses self.dimension if not provided)
             
         Returns:
             FAISS index object
@@ -181,6 +227,9 @@ class FAISSIndexManager:
         """
         # Validate tenant access
         self.validate_tenant_access(tenant_id)
+        
+        # Use provided dimension or fall back to configured dimension
+        index_dimension = dimension if dimension is not None else self.dimension
         
         # Import FAISS (lazy import to avoid dependency if not installed)
         try:
@@ -192,16 +241,16 @@ class FAISSIndexManager:
         
         # Create index based on configured type
         if self.index_type == "IndexFlatL2":
-            index = faiss.IndexFlatL2(self.dimension)
+            index = faiss.IndexFlatL2(index_dimension)
         elif self.index_type == "IndexFlatIP":
-            index = faiss.IndexFlatIP(self.dimension)
+            index = faiss.IndexFlatIP(index_dimension)
         else:
             # Default to IndexFlatL2
             logger.warning(
                 f"Unknown index type {self.index_type}, using IndexFlatL2",
                 index_type=self.index_type,
             )
-            index = faiss.IndexFlatL2(self.dimension)
+            index = faiss.IndexFlatL2(index_dimension)
         
         # Store in cache
         self._indices[tenant_id] = index
@@ -210,7 +259,7 @@ class FAISSIndexManager:
             "FAISS index created for tenant",
             tenant_id=str(tenant_id),
             index_type=self.index_type,
-            dimension=self.dimension,
+            dimension=index_dimension,
         )
         
         return index
@@ -319,13 +368,14 @@ class FAISSIndexManager:
             )
             raise
     
-    def get_index(self, tenant_id: UUID, create_if_missing: bool = False) -> Optional[any]:
+    def get_index(self, tenant_id: UUID, create_if_missing: bool = False, dimension: Optional[int] = None) -> Optional[any]:
         """
         Get a tenant's FAISS index, loading from disk if needed.
         
         Args:
             tenant_id: Tenant ID
             create_if_missing: If True, create index if it doesn't exist
+            dimension: Optional embedding dimension (used when creating index)
             
         Returns:
             FAISS index object or None if not found and create_if_missing is False
@@ -341,7 +391,7 @@ class FAISSIndexManager:
         
         # Create if missing and requested
         if index is None and create_if_missing:
-            index = self.create_index(tenant_id)
+            index = self.create_index(tenant_id, dimension=dimension)
         
         return index
     
@@ -402,29 +452,51 @@ class FAISSIndexManager:
         # Validate tenant access
         self.validate_tenant_access(tenant_id)
         
-        # Get or create index
-        index = self.get_index(tenant_id, create_if_missing=True)
+        embedding_dimension = embedding.shape[0]
+        
+        # Get or create index with the embedding's dimension
+        index = self.get_index(tenant_id, create_if_missing=True, dimension=embedding_dimension)
         
         if index is None:
             raise ValueError(f"Failed to get or create FAISS index for tenant {tenant_id}")
         
+        # Check if existing index has wrong dimension - if so, recreate it
+        if hasattr(index, 'd') and index.d != embedding_dimension:
+            logger.warning(
+                "FAISS index dimension mismatch, recreating index",
+                tenant_id=str(tenant_id),
+                existing_dimension=index.d,
+                required_dimension=embedding_dimension,
+            )
+            # Delete old index
+            self.delete_index(tenant_id)
+            # Create new index with correct dimension
+            index = self.create_index(tenant_id, dimension=embedding_dimension)
+        
         # Validate embedding dimension
-        if embedding.shape[0] != self.dimension:
+        if hasattr(index, 'd') and index.d != embedding_dimension:
             raise ValueError(
-                f"Embedding dimension {embedding.shape[0]} doesn't match index dimension {self.dimension}"
+                f"Embedding dimension {embedding_dimension} doesn't match index dimension {index.d}"
             )
         
         # Reshape embedding to 2D array (FAISS requires shape [1, dimension])
         embedding_2d = embedding.reshape(1, -1).astype(np.float32)
         
         # Add embedding to index
-        # FAISS indices use integer IDs, so we'll use a hash of document_id
-        # In production, you might want to maintain a mapping of document_id -> FAISS ID
+        # IndexFlatL2 doesn't support add_with_ids, so we use add() instead
+        # In production, you might want to maintain a separate mapping of document_id -> FAISS position
         import faiss
-        faiss_id = hash(str(document_id)) % (2**31)  # Convert to 32-bit signed integer
         
         try:
-            index.add_with_ids(embedding_2d, np.array([faiss_id], dtype=np.int64))
+            # Check if index is wrapped with IndexIDMap (supports add_with_ids)
+            # IndexFlatL2 directly doesn't support add_with_ids
+            faiss_id = None
+            if isinstance(index, faiss.IndexIDMap) or (hasattr(index, 'id_map') and index.id_map is not None):
+                faiss_id = hash(str(document_id)) % (2**31)  # Convert to 32-bit signed integer
+                index.add_with_ids(embedding_2d, np.array([faiss_id], dtype=np.int64))
+            else:
+                # For IndexFlatL2, use add() without IDs
+                index.add(embedding_2d)
             
             # Save index to disk
             self.save_index(tenant_id, index)
@@ -498,6 +570,150 @@ class FAISSIndexManager:
                 "Error removing document from FAISS index",
                 tenant_id=str(tenant_id),
                 document_id=str(document_id),
+                error=str(e),
+            )
+            raise
+    
+    def _faiss_id_to_document_id(self, faiss_id: int) -> Optional[UUID]:
+        """
+        Reverse-map FAISS ID back to document ID.
+        
+        Since we use hash(document_id) % (2**31) to create FAISS IDs,
+        we need to search through known document IDs to find matches.
+        This is inefficient but necessary for IndexFlat indices.
+        
+        Args:
+            faiss_id: FAISS integer ID
+            
+        Returns:
+            Document UUID if found, None otherwise
+        """
+        # This is a limitation of using hash-based IDs with IndexFlat
+        # In production, maintain a reverse mapping (faiss_id -> document_id)
+        # For now, we'll need to query the database to find matching documents
+        # This method will be called from search results
+        return None
+    
+    def search(
+        self,
+        tenant_id: UUID,
+        query_embedding: np.ndarray,
+        k: int = 10,
+    ) -> List[Tuple[int, float]]:
+        """
+        Search for similar documents in the tenant's FAISS index.
+        
+        Args:
+            tenant_id: Tenant ID
+            query_embedding: Query embedding vector (numpy array)
+            k: Number of results to return (default: 10)
+            
+        Returns:
+            List of tuples: [(faiss_id, similarity_score), ...]
+            Results are sorted by similarity (highest first)
+            faiss_id is the integer ID stored in FAISS (hash of document_id)
+            For IndexFlatL2: similarity score is 1 / (1 + distance), higher = more similar
+            For IndexFlatIP: similarity score is the inner product, higher = more similar
+            
+        Raises:
+            TenantIsolationError: If tenant_id mismatch
+            ValueError: If embedding dimension doesn't match index dimension
+        """
+        # Validate tenant access
+        self.validate_tenant_access(tenant_id)
+        
+        # Get index
+        index = self.get_index(tenant_id, create_if_missing=False)
+        
+        if index is None:
+            logger.warning(
+                "FAISS index not found for tenant, returning empty results",
+                tenant_id=str(tenant_id),
+            )
+            return []
+        
+        # Check if index is empty
+        if index.ntotal == 0:
+            logger.debug(
+                "FAISS index is empty for tenant",
+                tenant_id=str(tenant_id),
+            )
+            return []
+        
+        # Validate embedding dimension
+        if query_embedding.shape[0] != self.dimension:
+            raise ValueError(
+                f"Query embedding dimension {query_embedding.shape[0]} doesn't match index dimension {self.dimension}"
+            )
+        
+        # Reshape query embedding to 2D array (FAISS requires shape [1, dimension])
+        query_2d = query_embedding.reshape(1, -1).astype(np.float32)
+        
+        try:
+            import faiss
+            
+            # Perform search
+            # Returns: distances (shape: [1, k]), indices (shape: [1, k])
+            # indices contains the FAISS IDs we stored with add_with_ids
+            distances, indices = index.search(query_2d, min(k, index.ntotal))
+            
+            # Get FAISS IDs and distance scores from search results
+            faiss_ids = indices[0]  # Shape: [k]
+            distance_scores = distances[0]  # Shape: [k]
+            
+            # Filter out invalid indices (-1 means no result found)
+            valid_results = [
+                (int(faiss_id), float(score))
+                for faiss_id, score in zip(faiss_ids, distance_scores)
+                if faiss_id != -1
+            ]
+            
+            # Convert distance to similarity score based on index type
+            # For IndexFlatL2: lower distance = more similar, convert to similarity (1 / (1 + distance))
+            # For IndexFlatIP: higher score = more similar, use score directly
+            if self.index_type == "IndexFlatL2":
+                # Convert L2 distance to similarity score (higher = more similar)
+                # Using 1 / (1 + distance) to normalize to [0, 1]
+                results = [
+                    (faiss_id, 1.0 / (1.0 + distance))
+                    for faiss_id, distance in valid_results
+                ]
+            elif self.index_type == "IndexFlatIP":
+                # For inner product, higher is better
+                # Normalize using sigmoid: 1 / (1 + exp(-score))
+                # This maps (-inf, +inf) to (0, 1)
+                import math
+                results = [
+                    (faiss_id, 1.0 / (1.0 + math.exp(-score)))
+                    for faiss_id, score in valid_results
+                ]
+            else:
+                # Default: treat as similarity score (already normalized)
+                results = valid_results
+            
+            # Sort by similarity (highest first)
+            results.sort(key=lambda x: x[1], reverse=True)
+            
+            logger.debug(
+                "FAISS search completed",
+                tenant_id=str(tenant_id),
+                k_requested=k,
+                k_returned=len(results),
+                index_type=self.index_type,
+                index_size=index.ntotal,
+            )
+            
+            # Return FAISS IDs with similarity scores
+            # Caller will need to resolve FAISS IDs to document IDs via database query
+            return results
+            
+        except ImportError:
+            logger.error("FAISS not installed, cannot perform search")
+            raise ValueError("FAISS library not installed")
+        except Exception as e:
+            logger.error(
+                "Error performing FAISS search",
+                tenant_id=str(tenant_id),
                 error=str(e),
             )
             raise

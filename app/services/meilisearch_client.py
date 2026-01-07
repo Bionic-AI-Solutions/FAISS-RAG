@@ -2,7 +2,8 @@
 Meilisearch client setup with tenant-scoped index support.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
+from uuid import UUID
 
 import structlog
 from meilisearch import Client
@@ -198,6 +199,125 @@ async def remove_document_from_index(
                 error=str(e),
             )
             raise
+
+
+async def search_documents(
+    tenant_id: str,
+    query: str,
+    k: int = 10,
+    filters: Optional[Dict[str, Any]] = None,
+) -> List[Tuple[str, float]]:
+    """
+    Search documents in the tenant's Meilisearch index.
+    
+    Args:
+        tenant_id: Tenant ID (UUID string)
+        query: Search query text
+        k: Number of results to return (default: 10)
+        filters: Optional filters (e.g., {"document_type": "text", "tags": ["tag1"]})
+        
+    Returns:
+        List of tuples: [(document_id, relevance_score), ...]
+        Results are sorted by relevance (highest first)
+        Relevance scores are normalized by Meilisearch (typically 0-1 range)
+        
+    Raises:
+        MeilisearchError: If search fails
+        ValueError: If query is empty
+    """
+    if not query or not query.strip():
+        raise ValueError("Search query cannot be empty")
+    
+    client = create_meilisearch_client()
+    index_name = await get_tenant_index_name(tenant_id)
+    
+    try:
+        # Get index
+        try:
+            index = client.get_index(index_name)
+        except MeilisearchError:
+            # Index doesn't exist, return empty results
+            logger.warning(
+                "Meilisearch index not found for tenant, returning empty results",
+                tenant_id=tenant_id,
+                index_name=index_name,
+            )
+            return []
+        
+        # Build filter string for tenant isolation and additional filters
+        # tenant_id is already enforced by index isolation, but we add it as a filter for extra safety
+        filter_parts = [f"tenant_id = {tenant_id}"]
+        
+        if filters:
+            # Add document_type filter if provided
+            if "document_type" in filters:
+                doc_type = filters["document_type"]
+                filter_parts.append(f'metadata.type = "{doc_type}"')
+            
+            # Add tags filter if provided
+            if "tags" in filters and filters["tags"]:
+                tags = filters["tags"]
+                if isinstance(tags, list):
+                    # Meilisearch filter syntax: tags IN ["tag1", "tag2"]
+                    tag_list = ", ".join([f'"{tag}"' for tag in tags])
+                    filter_parts.append(f"metadata.tags IN [{tag_list}]")
+                elif isinstance(tags, str):
+                    filter_parts.append(f'metadata.tags = "{tags}"')
+            
+            # Add date range filter if provided
+            if "date_from" in filters or "date_to" in filters:
+                # Note: Meilisearch doesn't support date filtering directly
+                # We'll need to handle this in post-processing or use a different approach
+                # For now, we'll skip date filtering at the Meilisearch level
+                logger.debug(
+                    "Date range filtering not supported in Meilisearch, will be handled post-search",
+                    tenant_id=tenant_id,
+                )
+        
+        filter_string = " AND ".join(filter_parts) if len(filter_parts) > 1 else filter_parts[0]
+        
+        # Perform search
+        search_results = index.search(
+            query,
+            {
+                "limit": k,
+                "filter": filter_string,
+                "attributesToRetrieve": ["id", "title", "content", "metadata"],
+            }
+        )
+        
+        # Extract document IDs and relevance scores
+        results: List[Tuple[str, float]] = []
+        
+        for hit in search_results.get("hits", []):
+            document_id = hit.get("id")
+            # Meilisearch provides _rankingScore or _formatted fields
+            # Use _rankingScore if available, otherwise use a default score
+            relevance_score = hit.get("_rankingScore", hit.get("_score", 1.0))
+            
+            if document_id:
+                results.append((document_id, float(relevance_score)))
+        
+        logger.debug(
+            "Meilisearch search completed",
+            tenant_id=tenant_id,
+            query=query[:100],  # Log first 100 chars
+            k_requested=k,
+            k_returned=len(results),
+            index_name=index_name,
+        )
+        
+        return results
+        
+    except MeilisearchError as e:
+        logger.error(
+            "Error performing Meilisearch search",
+            tenant_id=tenant_id,
+            query=query[:100],
+            index_name=index_name,
+            error=str(e),
+        )
+        raise
 
 
 async def check_meilisearch_health() -> dict[str, bool | str]:

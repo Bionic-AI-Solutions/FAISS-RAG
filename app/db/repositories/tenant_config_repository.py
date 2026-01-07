@@ -33,3 +33,10 @@ class TenantConfigRepository(BaseRepository[TenantConfig]):
         )
         return result.scalar_one_or_none()
 
+
+
+
+
+
+
+

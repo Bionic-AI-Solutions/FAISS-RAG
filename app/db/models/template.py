@@ -74,3 +74,10 @@ class Template(BaseModel):
     def __repr__(self) -> str:
         return f"<Template(template_id={self.template_id}, template_name={self.template_name}, domain_type={self.domain_type})>"
 
+
+
+
+
+
+
+

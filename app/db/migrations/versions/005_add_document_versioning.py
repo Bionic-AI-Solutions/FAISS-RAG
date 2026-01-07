@@ -85,3 +85,10 @@ def downgrade() -> None:
     op.drop_column('documents', 'deleted_at')
     op.drop_column('documents', 'version_number')
 
+
+
+
+
+
+
+

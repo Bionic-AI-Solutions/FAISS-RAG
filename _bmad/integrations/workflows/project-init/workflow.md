@@ -341,3 +341,10 @@ If automated setup fails, manually edit `_bmad/_config/project-config.yaml`:
 
 
 
+
+
+
+
+
+
+

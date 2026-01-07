@@ -217,3 +217,10 @@ class TestMeilisearchCrossTenantAccessPrevention:
             mock_index_1.update_filterable_attributes.assert_called_with(["tenant_id"])
             mock_index_2.update_filterable_attributes.assert_called_with(["tenant_id"])
 
+
+
+
+
+
+
+

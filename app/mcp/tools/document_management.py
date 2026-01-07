@@ -136,8 +136,10 @@ async def rag_delete_document(
                 }
             
             # Soft delete: mark as deleted in PostgreSQL
-            document.deleted_at = datetime.utcnow()
-            await doc_repo.update(document)
+            await doc_repo.update(
+                doc_uuid,
+                deleted_at=datetime.utcnow()
+            )
             
             # Remove from FAISS index (tenant-scoped)
             try:
@@ -471,15 +473,17 @@ async def rag_list_documents(
             
             # Apply filters
             if document_type:
-                # Filter by document type from metadata
+                # Filter by document type from metadata using PostgreSQL JSON operator (->>)
+                from sqlalchemy import text
                 query = query.where(
-                    Document.metadata_json["type"].astext == document_type
+                    text("metadata->>'type' = :doc_type").bindparams(doc_type=document_type)
                 )
             
             if source:
-                # Filter by source from metadata
+                # Filter by source from metadata using PostgreSQL JSON operator (->>)
+                from sqlalchemy import text
                 query = query.where(
-                    Document.metadata_json["source"].astext == source
+                    text("metadata->>'source' = :source_val").bindparams(source_val=source)
                 )
             
             if date_from:

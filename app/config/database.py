@@ -26,8 +26,11 @@ class DatabaseSettings(BaseSettings):
     ssl: bool = Field(default=False, description="Enable SSL/TLS connection (TLS 1.3)")
 
     # Connection Pooling
-    pool_min: int = Field(default=2, description="Minimum connection pool size")
-    pool_max: int = Field(default=10, description="Maximum connection pool size")
+    # NFR-SCALE-004: 200 concurrent users/tenant requires pool_max=50
+    # Calculation: 200 tenants × 200 users × 10% active = 4,000 concurrent queries
+    # With 50 connections × 100 queries/connection = 5,000 capacity (sufficient)
+    pool_min: int = Field(default=5, description="Minimum connection pool size")
+    pool_max: int = Field(default=50, description="Maximum connection pool size (NFR: 200 concurrent users/tenant)")
     connection_timeout: int = Field(default=60000, description="Connection timeout in milliseconds")
 
     # Alternative: Database URL

@@ -28,10 +28,12 @@ if not tasks:
 **For each task:**
 
 1. **Start Task** → Update status to "In progress" (77)
-2. **Implement** → Write code, run tests
-3. **Complete Task** → Update status to "In testing" (79)
-4. **Add Comment** → Document implementation and test results
-5. **Update Story File** → Mark task as complete
+2. **IMMEDIATELY Update Story** → If first task, update story to "In progress" (77)
+3. **Implement** → Write code, run tests
+4. **Complete Task** → Update status to "In testing" (79)
+5. **IMMEDIATELY Update Story** → If test task ready, update story to "In testing" (79)
+6. **Add Comment** → Document implementation and test results
+7. **Update Story File** → Mark task as complete
 
 ```python
 # Start task
@@ -39,6 +41,10 @@ mcp_openproject_update_work_package(
     work_package_id=task_id,
     status_id=77  # In progress
 )
+
+# IMMEDIATE: Update story status if this is the first task
+from scripts.openproject_status_helpers import update_story_status_based_on_tasks
+update_story_status_based_on_tasks(story_id)
 
 # ... implement task ...
 
@@ -48,6 +54,11 @@ mcp_openproject_update_work_package(
     status_id=79,  # In testing
     description="Task complete. Tests passed. Ready for test team validation."
 )
+
+# IMMEDIATE: Update story status if test task ready
+if ".T:" in task_subject or "Testing and Validation" in task_subject:
+    from scripts.openproject_status_helpers import update_story_status_when_test_task_ready
+    update_story_status_when_test_task_ready(story_id, task_id)
 
 # Add comment
 mcp_openproject_add_work_package_comment(
@@ -83,23 +94,28 @@ mcp_openproject_update_work_package(
 )
 ```
 
-### Step 4: Mark Story Ready for Test
+### Step 4: Close Tasks and Update Story Status
 
-**When all tasks are closed:**
+**IMMEDIATE Status Updates:**
+
+When closing a task or bug, IMMEDIATELY update story status:
 
 ```python
-# Verify all tasks closed
-children = mcp_openproject_get_work_package_children(parent_id=story_id)
-tasks = [c for c in children["children"] if c["type"] == "Task"]
-all_tasks_closed = all(task["status"] == "Closed" for task in tasks)
+# Close task
+mcp_openproject_update_work_package(
+    work_package_id=task_id,
+    status_id=82  # Closed
+)
 
-if all_tasks_closed:
-    # Mark story ready for test
-    mcp_openproject_update_work_package(
-        work_package_id=story_id,
-        status_id=79  # In testing
-    )
+# IMMEDIATE: Update story status if all tasks/bugs closed
+from scripts.openproject_status_helpers import update_story_status_when_all_tasks_closed
+update_story_status_when_all_tasks_closed(story_id)
 ```
+
+**Note:** The helper function automatically:
+- Checks if all tasks and bugs are closed
+- Updates story to "Closed" (82) if all closed
+- Triggers epic status update if all stories in epic are closed
 
 ## Checklist
 
@@ -122,6 +138,8 @@ if all_tasks_closed:
 
 ## References
 
+- **Epic-Story Lifecycle:** `@bmad/bmm/workflows/epic-story-lifecycle` - Complete lifecycle requirements
+- **Status Helpers:** `scripts/openproject_status_helpers.py` - Helper functions for status transitions
 - **QA Testing Workflow:** `docs/QA_TESTING_WORKFLOW.md`
 - **Complete Agile Workflow:** `docs/COMPLETE_AGILE_WORKFLOW.md`
 - **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`

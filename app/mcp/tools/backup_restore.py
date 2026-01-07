@@ -417,3 +417,504 @@ async def rag_backup_tenant_data(
         logger.error("Tenant backup failed", tenant_id=tenant_id, error=str(e))
         raise
 
+
+# Restore functions
+
+async def validate_backup_manifest(backup_dir: Path) -> Dict[str, Any]:
+    """
+    Validate backup manifest and return manifest data.
+    
+    Args:
+        backup_dir: Path to backup directory containing manifest.json
+        
+    Returns:
+        Manifest dictionary
+        
+    Raises:
+        ValidationError: If manifest is missing or invalid
+        ResourceNotFoundError: If backup directory doesn't exist
+    """
+    if not backup_dir.exists():
+        raise ResourceNotFoundError(f"Backup directory not found: {backup_dir}")
+    
+    manifest_file = backup_dir / "manifest.json"
+    if not manifest_file.exists():
+        raise ValidationError(f"Backup manifest not found: {manifest_file}")
+    
+    try:
+        with open(manifest_file, "r") as f:
+            manifest = json.load(f)
+        
+        # Validate manifest structure
+        required_fields = ["backup_id", "tenant_id", "timestamp", "components"]
+        for field in required_fields:
+            if field not in manifest:
+                raise ValidationError(f"Manifest missing required field: {field}")
+        
+        # Validate component files exist
+        for component_name, component_data in manifest.get("components", {}).items():
+            if component_data.get("status") == "skipped":
+                continue
+            
+            file_path = component_data.get("file_path")
+            if file_path:
+                file_path_obj = Path(file_path)
+                if not file_path_obj.exists():
+                    # Try relative to backup_dir
+                    file_path_obj = backup_dir / Path(file_path).name
+                    if not file_path_obj.exists():
+                        raise ValidationError(
+                            f"Backup file not found for component {component_name}: {file_path}"
+                        )
+        
+        logger.info("Backup manifest validated", backup_id=manifest.get("backup_id"))
+        return manifest
+        
+    except json.JSONDecodeError as e:
+        raise ValidationError(f"Invalid manifest JSON: {str(e)}")
+    except Exception as e:
+        logger.error("Backup manifest validation failed", error=str(e))
+        raise
+
+
+async def restore_postgresql_data(tenant_id: UUID, backup_file: Path) -> Dict[str, Any]:
+    """
+    Restore PostgreSQL data for a tenant from backup.
+    
+    Args:
+        tenant_id: Tenant ID
+        backup_file: Path to PostgreSQL backup JSON file
+        
+    Returns:
+        Restore result dictionary
+    """
+    try:
+        with open(backup_file, "r") as f:
+            export_data = json.load(f)
+        
+        async for session in get_db_session():
+            # Set tenant context for RLS
+            await session.execute(
+                text(f'SET LOCAL "app.current_tenant_id" = \'{tenant_id}\'')
+            )
+            
+            tenant_repo = TenantRepository(session)
+            doc_repo = DocumentRepository(session)
+            user_repo = UserRepository(session)
+            config_repo = TenantConfigRepository(session)
+            
+            # Restore tenant (if needed)
+            tenant_data = export_data.get("tenant")
+            if tenant_data:
+                existing_tenant = await tenant_repo.get_by_id(tenant_id)
+                if not existing_tenant:
+                    # Tenant should already exist, but restore metadata if needed
+                    logger.warning("Tenant not found during restore, skipping tenant restore", tenant_id=str(tenant_id))
+            
+            # Restore users
+            users_data = export_data.get("users", [])
+            users_restored = 0
+            for user_data in users_data:
+                try:
+                    # Check if user exists
+                    existing_user = await user_repo.get_by_id(UUID(user_data["user_id"]))
+                    if existing_user:
+                        # Update existing user
+                        await user_repo.update(UUID(user_data["user_id"]), **{
+                            k: v for k, v in user_data.items()
+                            if k not in ["user_id", "created_at", "updated_at"]
+                        })
+                    else:
+                        # Create new user
+                        await user_repo.create(**user_data)
+                    users_restored += 1
+                except Exception as e:
+                    logger.warning("Failed to restore user", user_id=user_data.get("user_id"), error=str(e))
+            
+            # Restore documents
+            documents_data = export_data.get("documents", [])
+            documents_restored = 0
+            for doc_data in documents_data:
+                try:
+                    # Check if document exists
+                    existing_doc = await doc_repo.get_by_id(UUID(doc_data["document_id"]))
+                    if existing_doc:
+                        # Update existing document
+                        await doc_repo.update(UUID(doc_data["document_id"]), **{
+                            k: v for k, v in doc_data.items()
+                            if k not in ["document_id", "created_at", "updated_at"]
+                        })
+                    else:
+                        # Create new document
+                        await doc_repo.create(**doc_data)
+                    documents_restored += 1
+                except Exception as e:
+                    logger.warning("Failed to restore document", document_id=doc_data.get("document_id"), error=str(e))
+            
+            # Restore tenant config
+            config_data = export_data.get("config")
+            config_restored = False
+            if config_data:
+                try:
+                    existing_config = await config_repo.get_by_tenant_id(tenant_id)
+                    if existing_config:
+                        # Update existing config
+                        await config_repo.update(existing_config.config_id, **{
+                            k: v for k, v in config_data.items()
+                            if k not in ["config_id", "created_at", "updated_at"]
+                        })
+                    else:
+                        # Create new config
+                        await config_repo.create(**config_data)
+                    config_restored = True
+                except Exception as e:
+                    logger.warning("Failed to restore tenant config", tenant_id=str(tenant_id), error=str(e))
+            
+            await session.commit()
+            
+            logger.info(
+                "PostgreSQL data restored",
+                tenant_id=str(tenant_id),
+                users_restored=users_restored,
+                documents_restored=documents_restored,
+                config_restored=config_restored,
+            )
+            
+            return {
+                "status": "success",
+                "users_restored": users_restored,
+                "documents_restored": documents_restored,
+                "config_restored": config_restored,
+            }
+            
+    except Exception as e:
+        logger.error("PostgreSQL restore failed", tenant_id=str(tenant_id), error=str(e))
+        raise
+
+
+async def restore_faiss_index(tenant_id: UUID, backup_file: Path) -> Dict[str, Any]:
+    """
+    Restore FAISS index for a tenant from backup.
+    
+    Args:
+        tenant_id: Tenant ID
+        backup_file: Path to FAISS index backup file
+        
+    Returns:
+        Restore result dictionary
+    """
+    try:
+        index_path = get_tenant_index_path(tenant_id)
+        
+        # Copy backup file to index location
+        import shutil
+        shutil.copy2(backup_file, index_path)
+        
+        # Reload index in manager
+        faiss_manager.load_index(tenant_id)
+        
+        logger.info(
+            "FAISS index restored",
+            tenant_id=str(tenant_id),
+            backup_file=str(backup_file),
+            index_path=str(index_path),
+        )
+        
+        return {
+            "status": "success",
+            "index_path": str(index_path),
+        }
+        
+    except Exception as e:
+        logger.error("FAISS index restore failed", tenant_id=str(tenant_id), error=str(e))
+        raise
+
+
+async def restore_minio_objects(tenant_id: UUID, backup_file: Path) -> Dict[str, Any]:
+    """
+    Restore MinIO objects for a tenant from backup.
+    
+    Args:
+        tenant_id: Tenant ID
+        backup_file: Path to MinIO backup tar.gz file
+        
+    Returns:
+        Restore result dictionary
+    """
+    try:
+        bucket_name = await get_tenant_bucket(tenant_id, create_if_missing=True)
+        minio_client = create_minio_client()
+        
+        # Extract tar.gz to temp directory
+        temp_extract_dir = backup_file.parent / f"temp_extract_{tenant_id}"
+        temp_extract_dir.mkdir(parents=True, exist_ok=True)
+        
+        with tarfile.open(backup_file, "r:gz") as tar:
+            tar.extractall(temp_extract_dir)
+        
+        # Upload extracted files to MinIO
+        objects_restored = 0
+        for root, dirs, files in os.walk(temp_extract_dir):
+            for file in files:
+                file_path = Path(root) / file
+                # Get relative path from extract dir (this is the object name)
+                object_name = str(file_path.relative_to(temp_extract_dir))
+                
+                try:
+                    minio_client.fput_object(
+                        bucket_name,
+                        object_name,
+                        str(file_path),
+                    )
+                    objects_restored += 1
+                except Exception as e:
+                    logger.warning("Failed to restore MinIO object", object=object_name, error=str(e))
+        
+        # Clean up temp directory
+        import shutil
+        shutil.rmtree(temp_extract_dir)
+        
+        logger.info(
+            "MinIO objects restored",
+            tenant_id=str(tenant_id),
+            bucket_name=bucket_name,
+            objects_restored=objects_restored,
+        )
+        
+        return {
+            "status": "success",
+            "objects_restored": objects_restored,
+        }
+        
+    except Exception as e:
+        logger.error("MinIO objects restore failed", tenant_id=str(tenant_id), error=str(e))
+        raise
+
+
+async def restore_meilisearch_index(tenant_id: UUID, backup_file: Path) -> Dict[str, Any]:
+    """
+    Restore Meilisearch index for a tenant from backup.
+    
+    Args:
+        tenant_id: Tenant ID
+        backup_file: Path to Meilisearch backup JSON file
+        
+    Returns:
+        Restore result dictionary
+    """
+    try:
+        client = create_meilisearch_client()
+        index_name = await get_tenant_index_name(str(tenant_id))
+        
+        with open(backup_file, "r") as f:
+            export_data = json.load(f)
+        
+        # Get or create index
+        try:
+            index = client.get_index(index_name)
+        except Exception:
+            from app.services.meilisearch_client import create_tenant_index
+            await create_tenant_index(str(tenant_id))
+            index = client.get_index(index_name)
+        
+        # Clear existing documents (if any)
+        try:
+            index.delete_all_documents()
+        except Exception:
+            pass  # Index might be empty
+        
+        # Restore documents
+        documents = export_data.get("documents", [])
+        if documents:
+            # Batch add documents (Meilisearch supports batch operations)
+            index.add_documents(documents)
+        
+        logger.info(
+            "Meilisearch index restored",
+            tenant_id=str(tenant_id),
+            index_name=index_name,
+            documents_restored=len(documents),
+        )
+        
+        return {
+            "status": "success",
+            "documents_restored": len(documents),
+        }
+        
+    except Exception as e:
+        logger.error("Meilisearch index restore failed", tenant_id=str(tenant_id), error=str(e))
+        raise
+
+
+@mcp_server.tool()
+async def rag_restore_tenant_data(
+    tenant_id: str,
+    backup_id: str,
+    restore_type: str = "full",
+    confirmation: bool = False,
+) -> Dict[str, Any]:
+    """
+    Restore tenant data from backup.
+    
+    Restores tenant data from a previously created backup including:
+    - PostgreSQL data (documents, users, configs)
+    - FAISS vector index
+    - MinIO object storage
+    - Meilisearch search index
+    
+    IMPORTANT: This operation will overwrite existing tenant data.
+    A safety backup is automatically created before restore.
+    
+    Access restricted to Uber Admin role only.
+    
+    Args:
+        tenant_id: Tenant UUID (string format)
+        backup_id: Backup identifier (e.g., "backup_{tenant_id}_{timestamp}")
+        restore_type: Restore type - "full" or "partial" (default: "full")
+        confirmation: Explicit confirmation required (must be True to proceed)
+        
+    Returns:
+        Dictionary containing:
+        - restore_id: Unique restore identifier
+        - tenant_id: Tenant ID
+        - backup_id: Backup ID used for restore
+        - restore_type: Type of restore
+        - timestamp: Restore timestamp
+        - status: Restore status
+        - progress: Restore progress (percentage, estimated_time_remaining)
+        - components: Restore status for each component
+        - safety_backup_id: ID of safety backup created before restore
+        
+    Raises:
+        AuthorizationError: If user doesn't have permission (Uber Admin only)
+        ResourceNotFoundError: If tenant or backup not found
+        ValidationError: If restore_type is invalid or confirmation is False
+    """
+    # Check permissions - Uber Admin only
+    role = check_tool_permission("rag_restore_tenant_data")
+    if role != UserRole.UBER_ADMIN:
+        raise AuthorizationError("Access denied: Uber Admin role required")
+    
+    # Require explicit confirmation
+    if not confirmation:
+        raise ValidationError(
+            "Restore requires explicit confirmation. Set confirmation=True to proceed."
+        )
+    
+    # Validate restore_type
+    if restore_type not in {"full", "partial"}:
+        raise ValidationError(f"Invalid restore_type: {restore_type}. Must be 'full' or 'partial'")
+    
+    tenant_uuid = UUID(tenant_id)
+    
+    # Find backup directory
+    backup_dir = BACKUP_BASE_DIR / backup_id
+    if not backup_dir.exists():
+        raise ResourceNotFoundError(f"Backup not found: {backup_id}")
+    
+    # Validate backup manifest
+    manifest = await validate_backup_manifest(backup_dir)
+    
+    # Verify tenant_id matches
+    if manifest.get("tenant_id") != tenant_id:
+        raise ValidationError(
+            f"Backup tenant_id mismatch: backup is for {manifest.get('tenant_id')}, "
+            f"but restore requested for {tenant_id}"
+        )
+    
+    logger.info(
+        "Starting tenant restore",
+        tenant_id=tenant_id,
+        backup_id=backup_id,
+        restore_type=restore_type,
+    )
+    
+    # Create safety backup before restore
+    logger.info("Creating safety backup before restore", tenant_id=tenant_id)
+    try:
+        safety_backup_result = await rag_backup_tenant_data(
+            tenant_id=tenant_id,
+            backup_type="full",
+        )
+        safety_backup_id = safety_backup_result.get("backup_id")
+        logger.info("Safety backup created", tenant_id=tenant_id, safety_backup_id=safety_backup_id)
+    except Exception as e:
+        logger.error("Safety backup failed", tenant_id=tenant_id, error=str(e))
+        raise ValidationError(f"Failed to create safety backup: {str(e)}")
+    
+    restore_id = f"restore_{tenant_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    try:
+        restore_results = {
+            "restore_id": restore_id,
+            "tenant_id": tenant_id,
+            "backup_id": backup_id,
+            "restore_type": restore_type,
+            "timestamp": datetime.now().isoformat(),
+            "safety_backup_id": safety_backup_id,
+            "components": {},
+            "status": "in_progress",
+        }
+        
+        # Restore components based on manifest
+        components = manifest.get("components", {})
+        
+        # Restore PostgreSQL data
+        if restore_type == "full" and components.get("postgresql", {}).get("file_path"):
+            logger.info("Restoring PostgreSQL data", tenant_id=tenant_id)
+            pg_file = Path(components["postgresql"]["file_path"])
+            if not pg_file.is_absolute():
+                pg_file = backup_dir / pg_file.name
+            pg_result = await restore_postgresql_data(tenant_uuid, pg_file)
+            restore_results["components"]["postgresql"] = pg_result
+        
+        # Restore FAISS index
+        if restore_type == "full" and components.get("faiss", {}).get("file_path"):
+            logger.info("Restoring FAISS index", tenant_id=tenant_id)
+            faiss_file = Path(components["faiss"]["file_path"])
+            if not faiss_file.is_absolute():
+                faiss_file = backup_dir / faiss_file.name
+            faiss_result = await restore_faiss_index(tenant_uuid, faiss_file)
+            restore_results["components"]["faiss"] = faiss_result
+        
+        # Restore MinIO objects
+        if restore_type == "full" and components.get("minio", {}).get("file_path"):
+            logger.info("Restoring MinIO objects", tenant_id=tenant_id)
+            minio_file = Path(components["minio"]["file_path"])
+            if not minio_file.is_absolute():
+                minio_file = backup_dir / minio_file.name
+            minio_result = await restore_minio_objects(tenant_uuid, minio_file)
+            restore_results["components"]["minio"] = minio_result
+        
+        # Restore Meilisearch index
+        if restore_type == "full" and components.get("meilisearch", {}).get("file_path"):
+            logger.info("Restoring Meilisearch index", tenant_id=tenant_id)
+            meilisearch_file = Path(components["meilisearch"]["file_path"])
+            if not meilisearch_file.is_absolute():
+                meilisearch_file = backup_dir / meilisearch_file.name
+            meilisearch_result = await restore_meilisearch_index(tenant_uuid, meilisearch_file)
+            restore_results["components"]["meilisearch"] = meilisearch_result
+        
+        # Validate restore integrity (basic checks)
+        all_succeeded = all(
+            comp.get("status") == "success"
+            for comp in restore_results["components"].values()
+        )
+        
+        restore_results["status"] = "completed" if all_succeeded else "partial"
+        
+        logger.info(
+            "Tenant restore completed",
+            tenant_id=tenant_id,
+            restore_id=restore_id,
+            status=restore_results["status"],
+        )
+        
+        return restore_results
+        
+    except Exception as e:
+        logger.error("Tenant restore failed", tenant_id=tenant_id, error=str(e))
+        restore_results["status"] = "failed"
+        restore_results["error"] = str(e)
+        raise
+

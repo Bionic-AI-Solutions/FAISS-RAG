@@ -142,6 +142,29 @@ testing:
   tea_use_mcp_enhancements: false
   tea_use_playwright_utils: false
   
+  # Integration Test Patterns Configuration
+  integration_test_patterns:
+    # Location strategy: "epic-level" | "single-file" | "test-directory"
+    # - "epic-level": One pattern file per Epic (RECOMMENDED for projects without Features)
+    #   File: {implementation_artifacts}/integration-test-patterns-epic-{epic_num}.md
+    #   Attached to: Epic work package in OpenProject
+    #   Created during: Epic grooming (can be enhanced during story grooming)
+    # - "single-file": Single pattern file for all epics
+    #   File: {implementation_artifacts}/integration-test-patterns.md
+    #   Attached to: Project-level work package
+    # - "test-directory": Patterns live alongside test code
+    #   Directory: tests/integration/patterns/
+    #   Files: tests/integration/patterns/epic-{epic_num}.md
+    location: "epic-level"  # Options: "epic-level", "single-file", "test-directory"
+    
+    # File patterns (used based on location setting)
+    epic_pattern_file: "{implementation_artifacts}/integration-test-patterns-epic-{epic_num}.md"
+    single_file: "{implementation_artifacts}/integration-test-patterns.md"
+    test_directory: "tests/integration/patterns/"
+    
+    # Fixtures location (standard pytest location)
+    fixtures_location: "tests/fixtures/"
+  
 # -----------------------------------------------------------------------------
 # WORKFLOW DEFAULTS
 # -----------------------------------------------------------------------------

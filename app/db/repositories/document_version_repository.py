@@ -91,3 +91,10 @@ class DocumentVersionRepository(BaseRepository[DocumentVersion]):
         versions = await self.get_by_document_id(document_id, tenant_id)
         return versions[-1] if versions else None
 
+
+
+
+
+
+
+
