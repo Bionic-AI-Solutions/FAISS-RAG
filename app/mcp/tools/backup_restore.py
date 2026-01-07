@@ -243,11 +243,16 @@ async def backup_meilisearch_index(tenant_id: UUID, backup_dir: Path) -> Dict[st
         limit = 1000
         
         while True:
-            response = index.get_documents(offset=offset, limit=limit)
-            documents = response.get("results", [])
+            # Meilisearch get_documents() takes a single optional dict parameter
+            # Returns DocumentsResults object with 'results' attribute
+            response = index.get_documents({"offset": offset, "limit": limit})
+            # DocumentsResults object has 'results' attribute (list of documents)
+            documents = response.results if hasattr(response, 'results') else []
             if not documents:
                 break
             all_documents.extend(documents)
+            if len(documents) < limit:
+                break  # No more documents
             offset += limit
         
         export_data = {
@@ -331,6 +336,117 @@ async def rag_backup_tenant_data(
     if backup_type not in {"full", "incremental"}:
         raise ValidationError(f"Invalid backup_type: {backup_type}. Must be 'full' or 'incremental'")
     
+    tenant_uuid = UUID(tenant_id)
+    
+    # Determine backup location
+    if backup_location:
+        backup_base_dir = Path(backup_location)
+    else:
+        backup_base_dir = BACKUP_BASE_DIR
+    
+    backup_base_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create tenant-specific backup directory
+    backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_id = f"backup_{tenant_id}_{backup_timestamp}"
+    backup_dir = backup_base_dir / backup_id
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger.info(
+        "Starting tenant backup",
+        tenant_id=tenant_id,
+        backup_type=backup_type,
+        backup_id=backup_id,
+    )
+    
+    try:
+        # Backup components
+        manifest = {
+            "backup_id": backup_id,
+            "tenant_id": tenant_id,
+            "backup_type": backup_type,
+            "timestamp": datetime.now().isoformat(),
+            "components": {},
+        }
+        
+        # Backup PostgreSQL data
+        logger.info("Backing up PostgreSQL data", tenant_id=tenant_id)
+        postgres_backup = await backup_postgresql_data(tenant_uuid, backup_dir)
+        manifest["components"]["postgresql"] = postgres_backup
+        
+        # Backup FAISS index
+        logger.info("Backing up FAISS index", tenant_id=tenant_id)
+        faiss_backup = await backup_faiss_index(tenant_uuid, backup_dir)
+        manifest["components"]["faiss"] = faiss_backup
+        
+        # Backup MinIO objects
+        logger.info("Backing up MinIO objects", tenant_id=tenant_id)
+        minio_backup = await backup_minio_objects(tenant_uuid, backup_dir)
+        manifest["components"]["minio"] = minio_backup
+        
+        # Backup Meilisearch index
+        logger.info("Backing up Meilisearch index", tenant_id=tenant_id)
+        meilisearch_backup = await backup_meilisearch_index(tenant_uuid, backup_dir)
+        manifest["components"]["meilisearch"] = meilisearch_backup
+        
+        # Save manifest
+        manifest_file = backup_dir / "manifest.json"
+        with open(manifest_file, "w") as f:
+            json.dump(manifest, f, indent=2, default=str)
+        
+        # Calculate total backup size
+        total_size = sum(
+            comp.get("file_size", 0)
+            for comp in manifest["components"].values()
+            if comp.get("file_size")
+        )
+        
+        manifest["total_size"] = total_size
+        manifest["status"] = "completed"
+        
+        logger.info(
+            "Tenant backup completed",
+            tenant_id=tenant_id,
+            backup_id=backup_id,
+            total_size=total_size,
+        )
+        
+        return {
+            "backup_id": backup_id,
+            "tenant_id": tenant_id,
+            "backup_type": backup_type,
+            "timestamp": manifest["timestamp"],
+            "manifest": manifest,
+            "status": "completed",
+            "total_size": total_size,
+            "backup_location": str(backup_dir),
+        }
+        
+    except Exception as e:
+        logger.error("Tenant backup failed", tenant_id=tenant_id, error=str(e))
+        raise
+
+
+# Internal backup function (not decorated, can be called from other tools)
+async def _perform_backup(
+    tenant_id: str,
+    backup_type: str = "full",
+    backup_location: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Internal function to perform backup (not decorated as MCP tool).
+    
+    This function contains the actual backup logic and can be called
+    from both the MCP tool and other internal functions (e.g., restore).
+    
+    Args:
+        tenant_id: Tenant UUID (string format)
+        backup_type: Backup type - "full" or "incremental" (default: "full")
+        backup_location: Optional backup storage location (default: /tmp/backups)
+        
+    Returns:
+        Dictionary containing backup result with backup_id, status, etc.
+    """
     tenant_uuid = UUID(tenant_id)
     
     # Determine backup location
@@ -839,7 +955,8 @@ async def rag_restore_tenant_data(
     # Create safety backup before restore
     logger.info("Creating safety backup before restore", tenant_id=tenant_id)
     try:
-        safety_backup_result = await rag_backup_tenant_data(
+        # Use internal backup function (not MCP tool) to avoid circular dependency
+        safety_backup_result = await _perform_backup(
             tenant_id=tenant_id,
             backup_type="full",
         )
@@ -1131,8 +1248,8 @@ async def _perform_rebuild(
             # Delete existing index to start fresh
             existing_index_path = get_tenant_index_path(tenant_uuid)
             if existing_index_path.exists():
-                faiss_manager.remove_index_from_cache(tenant_uuid)
-                existing_index_path.unlink()
+                # Use delete_index which removes from cache and deletes file
+                faiss_manager.delete_index(tenant_uuid)
                 logger.info("Deleted existing FAISS index", tenant_id=str(tenant_uuid))
             
             # Get embedding dimension for tenant
