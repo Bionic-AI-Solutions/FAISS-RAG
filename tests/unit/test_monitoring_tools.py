@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 from datetime import datetime, timedelta
 
+from app.db.models.audit_log import AuditLog
 from app.mcp.middleware.rbac import UserRole
 from app.mcp.middleware.tenant import _role_context, _tenant_id_context, _user_id_context
 from app.mcp.server import mcp_server
@@ -35,6 +36,7 @@ def get_tool_func(tool_name: str):
 
 
 rag_get_usage_stats = get_tool_func("rag_get_usage_stats")
+rag_get_search_analytics = get_tool_func("rag_get_search_analytics")
 
 
 class TestRagGetUsageStats:
@@ -399,4 +401,350 @@ class TestRagGetUsageStats:
                                 assert result["statistics"]["storage_usage"] > 0
                                 assert "storage_usage_mb" in result["statistics"]
                                 assert result["statistics"]["storage_usage_mb"] > 0
+
+
+class TestRagGetSearchAnalytics:
+    """Tests for rag_get_search_analytics MCP tool."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        # Reset context variables before each test
+        _role_context.set(None)
+        _tenant_id_context.set(None)
+        _user_id_context.set(None)
+
+    @pytest.mark.asyncio
+    async def test_requires_tenant_admin_or_uber_admin(self):
+        """Test that search analytics requires Tenant Admin or Uber Admin role."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        _role_context.set(UserRole.END_USER)  # Not allowed
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.END_USER):
+            with pytest.raises(AuthorizationError):
+                await rag_get_search_analytics()
+
+    @pytest.mark.asyncio
+    async def test_tenant_admin_can_query_own_tenant(self):
+        """Test that Tenant Admin can query their own tenant."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Mock database session
+        mock_session = AsyncMock()
+        # Mock audit log queries - return empty lists (no logs)
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []  # No audit logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_search_analytics()
+
+                        assert result["tenant_id"] == str(tenant_id)
+                        assert "analytics" in result
+                        assert result["analytics"]["total_searches"] == 0
+                        assert result["analytics"]["average_response_time"] == 0.0
+                        assert result["analytics"]["top_queries"] == []
+                        assert result["analytics"]["zero_result_queries"] == []
+                        assert result["analytics"]["search_trends"] == {}
+                        assert not result["cached"]
+
+    @pytest.mark.asyncio
+    async def test_uber_admin_can_query_any_tenant(self):
+        """Test that Uber Admin can query any tenant."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []  # No audit logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                    result = await rag_get_search_analytics(tenant_id=str(tenant_id))
+
+                    assert result["tenant_id"] == str(tenant_id)
+                    assert "analytics" in result
+                    assert not result["cached"]
+
+    @pytest.mark.asyncio
+    async def test_tenant_admin_cannot_query_other_tenant(self):
+        """Test that Tenant Admin cannot query other tenants."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        other_tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with pytest.raises(AuthorizationError, match="Tenant Admin can only query"):
+                    await rag_get_search_analytics(tenant_id=str(other_tenant_id))
+
+    @pytest.mark.asyncio
+    async def test_aggregates_search_analytics(self):
+        """Test that search analytics are correctly aggregated from audit logs."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        user_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Create mock audit logs with search operations
+        now = datetime.utcnow()
+        search_logs = [
+            AuditLog(
+                log_id=uuid4(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="rag_search",
+                resource_type="rag_operation",
+                resource_id="query1",
+                timestamp=now - timedelta(hours=1),
+                details={
+                    "phase": "post_execution",
+                    "execution_success": True,
+                    "duration_ms": 50.0,
+                    "request_params": {"search_query": "test query 1"},
+                    "result_summary": "{'total_results': 5}",
+                },
+            ),
+            AuditLog(
+                log_id=uuid4(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="rag_search",
+                resource_type="rag_operation",
+                resource_id="query1",
+                timestamp=now - timedelta(hours=2),
+                details={
+                    "phase": "post_execution",
+                    "execution_success": True,
+                    "duration_ms": 75.0,
+                    "request_params": {"search_query": "test query 1"},
+                    "result_summary": "{'total_results': 3}",
+                },
+            ),
+            AuditLog(
+                log_id=uuid4(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="rag_search",
+                resource_type="rag_operation",
+                resource_id="query2",
+                timestamp=now - timedelta(hours=3),
+                details={
+                    "phase": "post_execution",
+                    "execution_success": True,
+                    "duration_ms": 100.0,
+                    "request_params": {"search_query": "test query 2"},
+                    "result_summary": "{'total_results': 0}",
+                },
+            ),
+        ]
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = search_logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_search_analytics()
+
+                        assert result["tenant_id"] == str(tenant_id)
+                        assert result["analytics"]["total_searches"] == 3
+                        assert result["analytics"]["average_response_time"] == 75.0  # (50 + 75 + 100) / 3
+                        assert len(result["analytics"]["top_queries"]) > 0
+                        assert "test query 1" in [q["query"] for q in result["analytics"]["top_queries"]]
+                        assert "test query 2" in result["analytics"]["zero_result_queries"]
+                        assert len(result["analytics"]["search_trends"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_filters_by_user_id(self):
+        """Test that search analytics can be filtered by user_id."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        user_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []  # No logs for this user
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_search_analytics(user_id=str(user_id))
+
+                        assert result["tenant_id"] == str(tenant_id)
+                        assert result["filters"]["user_id"] == str(user_id)
+                        assert result["analytics"]["total_searches"] == 0
+
+    @pytest.mark.asyncio
+    async def test_filters_by_document_type(self):
+        """Test that search analytics can be filtered by document_type."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []  # No logs for this document type
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_search_analytics(document_type="pdf")
+
+                        assert result["tenant_id"] == str(tenant_id)
+                        assert result["filters"]["document_type"] == "pdf"
+                        assert result["analytics"]["total_searches"] == 0
+
+    @pytest.mark.asyncio
+    async def test_caching(self):
+        """Test that search analytics are cached."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Mock cached result
+        cached_result = {
+            "tenant_id": str(tenant_id),
+            "date_range": {
+                "start_time": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+                "end_time": datetime.utcnow().isoformat(),
+            },
+            "analytics": {
+                "total_searches": 100,
+                "average_response_time": 50.0,
+                "top_queries": [],
+                "zero_result_queries": [],
+                "search_trends": {},
+            },
+            "filters": {"user_id": None, "document_type": None},
+        }
+
+        # Mock Redis (with cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = json.dumps(cached_result)
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                    result = await rag_get_search_analytics()
+
+                    assert result["cached"] is True
+                    assert result["analytics"]["total_searches"] == 100
+                    # Should not call database
+                    mock_redis.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invalid_tenant_id(self):
+        """Test that invalid tenant_id raises ValueError."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with pytest.raises(ValueError, match="Invalid tenant_id format"):
+                await rag_get_search_analytics(tenant_id="invalid-uuid")
+
+    @pytest.mark.asyncio
+    async def test_invalid_user_id(self):
+        """Test that invalid user_id raises ValueError."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with pytest.raises(ValueError, match="Invalid user_id format"):
+                    await rag_get_search_analytics(user_id="invalid-uuid")
+
+    @pytest.mark.asyncio
+    async def test_invalid_date_range(self):
+        """Test that invalid date_range raises ValueError."""
+        if not rag_get_search_analytics:
+            pytest.skip("rag_get_search_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with pytest.raises(ValueError, match="Invalid date_range format"):
+                    await rag_get_search_analytics(date_range="invalid-format")
 
