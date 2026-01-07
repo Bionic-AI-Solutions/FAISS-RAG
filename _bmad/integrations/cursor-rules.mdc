@@ -37,10 +37,40 @@ This rule file provides standard integration behaviors for all BMAD agents.
 | **Story**          | Story specifications, acceptance criteria docs, test cases |
 | **Task**           | Implementation notes, technical details                    |
 
+## Testing Requirements (MANDATORY)
+
+**CRITICAL: Every story MUST have both unit tests AND integration tests**
+
+- **Unit Tests:** `tests/unit/test_<component>.py` - Test logic with mocks
+- **Integration Tests:** `tests/integration/test_<component>_integration.py` - Test with real services
+
+**Reference:** `_bmad/integrations/testing-strategy.mdc` for complete testing requirements
+
+## QA Workflow (MANDATORY)
+
+**Complete workflow for task/story validation, bug management, and closure**
+
+- Task validation requires both unit and integration tests
+- Story validation requires both unit and integration tests
+- Bug fixes require both unit and integration tests
+
+**Reference:** `_bmad/integrations/qa-workflow.mdc` for complete QA workflow
+
 ## Integration Configuration
 
 All integration settings are stored in `_bmad/_config/project-config.yaml`.
 Agents should read configuration values from this file when executing workflows.
+
+## Behavioral Rules Sync Process
+
+**CRITICAL:** Whenever behavioral rules (`_bmad/integrations/*.mdc`) are updated, they MUST be synced to the virgin-devcontainer template repository to ensure all future projects benefit from learnings.
+
+**Sync Command:**
+```bash
+./scripts/sync-behavioral-rules-to-template.sh
+```
+
+**Process:** See `docs/BEHAVIORAL_RULES_SYNC_PROCESS.md` for complete sync process and verification checklist.
 
 ## OpenProject Integration (Work Management + Documents)
 
@@ -127,6 +157,8 @@ Agents should read configuration values from this file when executing workflows.
 ### Test Team
 
 - Validate tasks when marked "In testing" (79)
+- **Run unit test suite** (with mocks) - Verify logic and edge cases
+- **Run integration test suite** (with real services) - Verify real-world functionality
 - Validate stories when all tasks complete
 - Create bugs for validation failures
 - Validate bug fixes (iterate until closed)
@@ -171,12 +203,14 @@ Agents should read configuration values from this file when executing workflows.
 3. START       → mcp_openproject_update_work_package(status_id=config.openproject.statuses.in_progress)
 4. RESEARCH    → mcp_archon_rag_search_knowledge_base(...) [EXTERNAL knowledge only]
 5. IMPLEMENT   → Execute work
-6. MARK READY  → mcp_openproject_update_work_package(status_id=config.openproject.statuses.in_testing)
-7. TEST VALIDATE → Test team validates (task/story) - see Test Team Workflow Pattern
-8. BUG CYCLE   → If bugs found: create → fix → validate (iterate until all bugs closed)
-9. VERIFY      → Complete verification task (verify all acceptance criteria)
-10. DOCUMENT   → Attach docs to appropriate OpenProject work package [NOT Archon]
-11. COMPLETE   → mcp_openproject_update_work_package(status_id=config.openproject.statuses.closed)
+6. TEST        → Write unit tests (with mocks) + Write integration tests (with real services)
+7. RUN TESTS   → Run both unit and integration test suites
+8. MARK READY  → mcp_openproject_update_work_package(status_id=config.openproject.statuses.in_testing)
+9. TEST VALIDATE → Test team validates (task/story) - see Test Team Workflow Pattern
+10. BUG CYCLE   → If bugs found: create → fix → validate (iterate until all bugs closed)
+11. VERIFY      → Complete verification task (verify all acceptance criteria)
+12. DOCUMENT   → Attach docs to appropriate OpenProject work package [NOT Archon]
+13. COMPLETE   → mcp_openproject_update_work_package(status_id=config.openproject.statuses.closed)
 ```
 
 ### Test Team Workflow Pattern
@@ -184,13 +218,15 @@ Agents should read configuration values from this file when executing workflows.
 ```
 1. VALIDATE TASK → When task is "In testing" (79)
    - Review implementation
-   - Run test suite
+   - Run unit test suite (with mocks) - Verify logic and edge cases
+   - Run integration test suite (with real services) - Verify real-world functionality
    - Verify acceptance criteria
    - Update status: "Closed" (82) if passes, "Test failed" (81) if fails → Create bug
 
 2. VALIDATE STORY → When story is "In testing" (79) and all tasks closed
    - Review all tasks
-   - Run story test suite
+   - Run unit test suite (with mocks) - Verify logic and edge cases
+   - Run integration test suite (with real services) - Verify real-world functionality
    - Verify all acceptance criteria
    - Update status: "Closed" (82) if passes, "Test failed" (81) if fails → Create bugs
 
@@ -216,6 +252,17 @@ Agents should read configuration values from this file when executing workflows.
    - Close epic (status 82)
 ```
 
+### PM Workflow Pattern (Epic Grooming)
+
+```
+1. REVIEW EPIC → Get epic from OpenProject, review requirements
+2. CREATE INTEGRATION TEST PATTERN → Create integration test pattern file
+   - Location: {implementation_artifacts}/integration-test-patterns-epic-{n}.md
+   - Content: Integration test setup patterns, real service config, test fixtures
+   - Attach to Epic work package in OpenProject via MCP
+3. ENHANCE DURING STORY GROOMING → Update pattern file as stories are groomed and more clarity is gained
+```
+
 ### PM Workflow Pattern (Story Grooming)
 
 ```
@@ -224,8 +271,9 @@ Agents should read configuration values from this file when executing workflows.
 3. CREATE FILE → Create story file in _bmad-output/implementation-artifacts/
 4. CREATE TASKS → Create ALL tasks in OpenProject using bulk_create
 5. LINK TASKS → Set parent relationships for all tasks
-6. VERIFY → Verify all tasks created and linked
-7. MARK IN PROGRESS → Update story status to "In progress" (77) ONLY after tasks created
+6. ENHANCE INTEGRATION TEST PATTERN → Update Epic integration test pattern if new patterns emerge
+7. VERIFY → Verify all tasks created and linked
+8. MARK IN PROGRESS → Update story status to "In progress" (77) ONLY after tasks created
 ```
 
 ## Quick Start Commands
