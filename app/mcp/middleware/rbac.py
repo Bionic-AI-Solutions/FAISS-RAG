@@ -99,8 +99,7 @@ TOOL_PERMISSIONS: dict[str, Set[UserRole]] = {
     # Backup tools - Uber Admin and Tenant Admin only
     "rag_backup_tenant_data": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
     "rag_restore_tenant_data": {UserRole.UBER_ADMIN},  # Uber Admin only - destructive operation
-    "rag_restore_tenant_data": {UserRole.UBER_ADMIN},
-    "rag_rebuild_index": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},  # Phase 2
+    "rag_rebuild_index": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
     "rag_validate_backup": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},  # Phase 2
     
     # Data export tools - Uber Admin and Tenant Admin only

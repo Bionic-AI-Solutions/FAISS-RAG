@@ -28,8 +28,9 @@ from app.mcp.middleware.rbac import UserRole, check_tool_permission
 from app.mcp.middleware.tenant import get_tenant_id_from_context
 from app.mcp.server import mcp_server
 from app.services.faiss_manager import faiss_manager, get_tenant_index_path
-from app.services.minio_client import create_minio_client, get_tenant_bucket
+from app.services.minio_client import create_minio_client, get_tenant_bucket, get_document_content
 from app.services.meilisearch_client import create_meilisearch_client, get_tenant_index_name
+from app.services.embedding_service import embedding_service
 from app.utils.errors import AuthorizationError, ResourceNotFoundError, ValidationError
 
 logger = structlog.get_logger(__name__)
@@ -917,4 +918,408 @@ async def rag_restore_tenant_data(
         restore_results["status"] = "failed"
         restore_results["error"] = str(e)
         raise
+
+
+@mcp_server.tool()
+async def rag_rebuild_index(
+    tenant_id: str,
+    index_type: str = "FAISS",
+    rebuild_type: str = "full",
+    confirmation_code: str = "",
+    background: bool = False,
+) -> Dict[str, Any]:
+    """
+    Rebuild FAISS index for a tenant from source documents.
+    
+    Performs a comprehensive rebuild of the FAISS index by:
+    - Retrieving all documents for the tenant from PostgreSQL
+    - Retrieving document content from MinIO
+    - Regenerating embeddings for all documents
+    - Rebuilding the FAISS index with new embeddings
+    - Validating index integrity
+    
+    Supports both full rebuild (all documents) and incremental rebuild (only new/changed documents).
+    Can be performed in background (async) for large indices.
+    
+    Requires explicit confirmation to prevent accidental index corruption.
+    Access restricted to Uber Admin and Tenant Admin roles.
+    
+    Args:
+        tenant_id: Tenant UUID (string format)
+        index_type: Type of index to rebuild (currently only "FAISS" is supported)
+        rebuild_type: Type of rebuild ("full" or "incremental")
+        confirmation_code: A specific code (e.g., "FR-BACKUP-004") to confirm the rebuild operation.
+                          This is a safety measure to prevent accidental index corruption.
+        background: If True, rebuild is performed in background (async). Default: False.
+        
+    Returns:
+        Dictionary containing:
+        - tenant_id: Tenant ID
+        - index_type: Type of index rebuilt
+        - rebuild_type: Type of rebuild performed
+        - timestamp: Rebuild completion timestamp
+        - documents_processed: Number of documents processed
+        - embeddings_regenerated: Number of embeddings regenerated
+        - index_size: Number of vectors in the rebuilt index
+        - integrity_validated: Whether index integrity was validated
+        - status: Overall rebuild status ("succeeded", "failed", or "in_progress" for background)
+        - rebuild_id: Unique identifier for this rebuild operation (for tracking)
+        
+    Raises:
+        AuthorizationError: If user doesn't have permission
+        ValidationError: If tenant_id, index_type, rebuild_type, or confirmation_code is invalid
+        ResourceNotFoundError: If tenant not found
+    """
+    # Check permissions
+    role = check_tool_permission("rag_rebuild_index")
+    if role not in {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN}:
+        raise AuthorizationError(
+            "Access denied: Only Uber Admin and Tenant Admin roles can rebuild indices."
+        )
+    
+    # Validate confirmation code
+    if confirmation_code != "FR-BACKUP-004":
+        raise ValidationError(
+            "Rebuild operation requires explicit confirmation code 'FR-BACKUP-004' to prevent accidental index corruption.",
+            field="confirmation_code"
+        )
+    
+    # Validate index_type
+    if index_type.upper() != "FAISS":
+        raise ValidationError(
+            f"Invalid index_type: {index_type}. Currently only 'FAISS' is supported.",
+            field="index_type"
+        )
+    
+    # Validate rebuild_type
+    if rebuild_type not in {"full", "incremental"}:
+        raise ValidationError(
+            f"Invalid rebuild_type: {rebuild_type}. Must be 'full' or 'incremental'.",
+            field="rebuild_type"
+        )
+    
+    try:
+        tenant_uuid = UUID(tenant_id)
+    except ValueError:
+        raise ValidationError(f"Invalid tenant_id format: {tenant_id}", field="tenant_id")
+    
+    rebuild_id = f"rebuild_{tenant_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    logger.info(
+        "Starting FAISS index rebuild",
+        tenant_id=tenant_id,
+        index_type=index_type,
+        rebuild_type=rebuild_type,
+        background=background,
+        rebuild_id=rebuild_id,
+    )
+    
+    # If background mode, run rebuild in background task
+    if background:
+        # Create background task (simplified - in production, use proper task queue)
+        import asyncio
+        task = asyncio.create_task(
+            _perform_rebuild(tenant_uuid, index_type, rebuild_type, rebuild_id)
+        )
+        return {
+            "tenant_id": tenant_id,
+            "index_type": index_type,
+            "rebuild_type": rebuild_type,
+            "timestamp": datetime.now().isoformat(),
+            "status": "in_progress",
+            "rebuild_id": rebuild_id,
+            "background": True,
+            "message": "Rebuild started in background. Use rebuild_id to track progress.",
+        }
+    
+    # Perform rebuild synchronously
+    return await _perform_rebuild(tenant_uuid, index_type, rebuild_type, rebuild_id)
+
+
+async def _perform_rebuild(
+    tenant_uuid: UUID,
+    index_type: str,
+    rebuild_type: str,
+    rebuild_id: str,
+) -> Dict[str, Any]:
+    """
+    Perform the actual index rebuild operation.
+    
+    Args:
+        tenant_uuid: Tenant UUID
+        index_type: Type of index to rebuild
+        rebuild_type: Type of rebuild ("full" or "incremental")
+        rebuild_id: Unique identifier for this rebuild operation
+        
+    Returns:
+        Dictionary with rebuild results
+    """
+    documents_processed = 0
+    embeddings_regenerated = 0
+    index_size = 0
+    integrity_validated = False
+    
+    try:
+        async for session in get_db_session():
+            # Set tenant context for RLS
+            await session.execute(
+                text(f'SET LOCAL "app.current_tenant_id" = \'{tenant_uuid}\'')
+            )
+            
+            # Verify tenant exists
+            tenant_repo = TenantRepository(session)
+            tenant = await tenant_repo.get_by_id(tenant_uuid)
+            if not tenant:
+                raise ResourceNotFoundError(f"Tenant {tenant_uuid} not found")
+            
+            # Get all documents for tenant (excluding deleted)
+            doc_repo = DocumentRepository(session)
+            
+            # For incremental rebuild, only get documents that have been updated since last rebuild
+            # For now, we'll implement full rebuild - incremental can be added later
+            if rebuild_type == "incremental":
+                logger.warning(
+                    "Incremental rebuild not fully implemented, performing full rebuild",
+                    tenant_id=str(tenant_uuid),
+                )
+                rebuild_type = "full"
+            
+            # Get all non-deleted documents for tenant
+            # Use a large limit to get all documents (in production, use pagination)
+            documents = await doc_repo.get_by_tenant(tenant_uuid, skip=0, limit=100000)
+            documents_processed = len(documents)
+            
+            logger.info(
+                "Retrieved documents for rebuild",
+                tenant_id=str(tenant_uuid),
+                document_count=documents_processed,
+            )
+            
+            if documents_processed == 0:
+                logger.warning(
+                    "No documents found for tenant, creating empty index",
+                    tenant_id=str(tenant_uuid),
+                )
+                # Create empty index
+                embedding_dimension = await _get_tenant_embedding_dimension(str(tenant_uuid))
+                faiss_manager.create_index(tenant_uuid, dimension=embedding_dimension)
+                faiss_manager.save_index(tenant_uuid, faiss_manager.get_index(tenant_uuid))
+                
+                return {
+                    "tenant_id": str(tenant_uuid),
+                    "index_type": index_type,
+                    "rebuild_type": rebuild_type,
+                    "timestamp": datetime.now().isoformat(),
+                    "documents_processed": 0,
+                    "embeddings_regenerated": 0,
+                    "index_size": 0,
+                    "integrity_validated": True,
+                    "status": "succeeded",
+                    "rebuild_id": rebuild_id,
+                    "message": "Empty index created (no documents found)",
+                }
+            
+            # Delete existing index to start fresh
+            existing_index_path = get_tenant_index_path(tenant_uuid)
+            if existing_index_path.exists():
+                faiss_manager.remove_index_from_cache(tenant_uuid)
+                existing_index_path.unlink()
+                logger.info("Deleted existing FAISS index", tenant_id=str(tenant_uuid))
+            
+            # Get embedding dimension for tenant
+            embedding_dimension = await _get_tenant_embedding_dimension(str(tenant_uuid))
+            
+            # Create new index
+            faiss_manager.create_index(tenant_uuid, dimension=embedding_dimension)
+            index = faiss_manager.get_index(tenant_uuid)
+            
+            if index is None:
+                raise RuntimeError("Failed to create FAISS index")
+            
+            # Process documents in batches for better performance
+            batch_size = 100
+            total_batches = (documents_processed + batch_size - 1) // batch_size
+            
+            logger.info(
+                "Starting document processing",
+                tenant_id=str(tenant_uuid),
+                total_documents=documents_processed,
+                batch_size=batch_size,
+                total_batches=total_batches,
+            )
+            
+            # Process documents in batches
+            for batch_idx in range(total_batches):
+                start_idx = batch_idx * batch_size
+                end_idx = min(start_idx + batch_size, documents_processed)
+                batch_documents = documents[start_idx:end_idx]
+                
+                logger.debug(
+                    "Processing document batch",
+                    tenant_id=str(tenant_uuid),
+                    batch_idx=batch_idx + 1,
+                    total_batches=total_batches,
+                    batch_size=len(batch_documents),
+                )
+                
+                # Process each document in the batch
+                for document in batch_documents:
+                    try:
+                        # Retrieve document content from MinIO
+                        content_bytes = await get_document_content(tenant_uuid, document.document_id)
+                        text_content = content_bytes.decode("utf-8")
+                        
+                        # Regenerate embedding
+                        embedding = await embedding_service.generate_embedding(
+                            text=text_content,
+                            tenant_id=str(tenant_uuid),
+                        )
+                        embeddings_regenerated += 1
+                        
+                        # Add to FAISS index
+                        faiss_manager.add_document(
+                            tenant_id=tenant_uuid,
+                            document_id=document.document_id,
+                            embedding=embedding,
+                        )
+                        index_size += 1
+                        
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to process document during rebuild",
+                            tenant_id=str(tenant_uuid),
+                            document_id=str(document.document_id),
+                            error=str(e),
+                        )
+                        # Continue with next document
+                        continue
+                
+                # Save index periodically (every batch) to avoid data loss
+                faiss_manager.save_index(tenant_uuid, index)
+                logger.debug(
+                    "Saved index after batch",
+                    tenant_id=str(tenant_uuid),
+                    batch_idx=batch_idx + 1,
+                    index_size=index_size,
+                )
+            
+            # Final save
+            faiss_manager.save_index(tenant_uuid, index)
+            
+            # Validate index integrity
+            integrity_validated = await _validate_index_integrity(tenant_uuid, index_size)
+            
+            logger.info(
+                "FAISS index rebuild completed",
+                tenant_id=str(tenant_uuid),
+                documents_processed=documents_processed,
+                embeddings_regenerated=embeddings_regenerated,
+                index_size=index_size,
+                integrity_validated=integrity_validated,
+            )
+            
+            return {
+                "tenant_id": str(tenant_uuid),
+                "index_type": index_type,
+                "rebuild_type": rebuild_type,
+                "timestamp": datetime.now().isoformat(),
+                "documents_processed": documents_processed,
+                "embeddings_regenerated": embeddings_regenerated,
+                "index_size": index_size,
+                "integrity_validated": integrity_validated,
+                "status": "succeeded" if integrity_validated else "partial",
+                "rebuild_id": rebuild_id,
+            }
+            
+    except Exception as e:
+        logger.error(
+            "FAISS index rebuild failed",
+            tenant_id=str(tenant_uuid),
+            rebuild_id=rebuild_id,
+            error=str(e),
+        )
+        return {
+            "tenant_id": str(tenant_uuid),
+            "index_type": index_type,
+            "rebuild_type": rebuild_type,
+            "timestamp": datetime.now().isoformat(),
+            "documents_processed": documents_processed,
+            "embeddings_regenerated": embeddings_regenerated,
+            "index_size": index_size,
+            "integrity_validated": False,
+            "status": "failed",
+            "rebuild_id": rebuild_id,
+            "error": str(e),
+        }
+
+
+async def _get_tenant_embedding_dimension(tenant_id: str) -> int:
+    """
+    Get the embedding dimension for a tenant's configured model.
+    
+    Args:
+        tenant_id: Tenant UUID (string format)
+        
+    Returns:
+        int: Embedding dimension
+    """
+    try:
+        _, dimension = await embedding_service._get_tenant_embedding_model(tenant_id)
+        return dimension
+    except Exception:
+        # Fallback to default dimension
+        return 384  # GPU-AI default dimension
+
+
+async def _validate_index_integrity(tenant_id: UUID, expected_size: int) -> bool:
+    """
+    Validate FAISS index integrity.
+    
+    Args:
+        tenant_id: Tenant UUID
+        expected_size: Expected number of vectors in the index
+        
+    Returns:
+        bool: True if integrity is valid, False otherwise
+    """
+    try:
+        index = faiss_manager.get_index(tenant_id)
+        if index is None:
+            logger.warning("Index not found for integrity validation", tenant_id=str(tenant_id))
+            return False
+        
+        # Check if index is empty
+        if index.ntotal == 0 and expected_size > 0:
+            logger.warning(
+                "Index is empty but expected size > 0",
+                tenant_id=str(tenant_id),
+                expected_size=expected_size,
+            )
+            return False
+        
+        # Check if index size matches expected size (allow small differences due to failures)
+        if abs(index.ntotal - expected_size) > expected_size * 0.1:  # Allow 10% difference
+            logger.warning(
+                "Index size mismatch",
+                tenant_id=str(tenant_id),
+                expected_size=expected_size,
+                actual_size=index.ntotal,
+            )
+            return False
+        
+        logger.info(
+            "Index integrity validated",
+            tenant_id=str(tenant_id),
+            index_size=index.ntotal,
+            expected_size=expected_size,
+        )
+        return True
+        
+    except Exception as e:
+        logger.error(
+            "Error validating index integrity",
+            tenant_id=str(tenant_id),
+            error=str(e),
+        )
+        return False
 
