@@ -77,14 +77,27 @@ Validate tasks and stories after implementation, create bugs for failures, and m
 ### Step 6: Epic Closure
 
 **Prerequisites:**
-- ✅ All stories "Closed" (82)
+- ✅ All stories "Closed" (82) (including Story X.T and Story X.NFR)
 - ✅ All tasks in all stories "Closed" (82)
 - ✅ All bugs in all stories "Closed" (82)
+- ✅ **Integration tests pass** (tests/integration/test_epic*_*.py)
+- ✅ **NFR verification complete** (Story X.NFR closed with verification report)
+- ✅ Test documentation created and attached
 
 **Process:**
-1. Verify all prerequisites
-2. Run epic-level integration tests
-3. Close epic (status 82)
+1. **Run integration tests:**
+   ```bash
+   pytest tests/integration/test_epic{epic_number}_*.py -v
+   ```
+2. **Verify all tests pass** - If any test fails, create bugs and iterate
+3. **Verify NFR compliance:**
+   - Verify Story X.NFR is closed
+   - Verify NFR verification report exists
+   - Verify connection pooling meets targets
+   - Verify concurrent request handling works
+   - Verify fault tolerance mechanisms work
+   - Verify performance targets met (latency, throughput)
+4. **Only after all tests pass AND NFR verification complete**, close epic (status 82)
 
 ## References
 

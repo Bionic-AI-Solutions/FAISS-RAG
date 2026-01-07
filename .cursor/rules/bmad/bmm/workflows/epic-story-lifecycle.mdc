@@ -1,0 +1,430 @@
+# BMAD BMM Workflow: epic-story-lifecycle
+
+**Workflow Type:** Epic and Story Lifecycle Management  
+**Agent:** PM (Product Manager), SM (Scrum Master), Dev, Test Team  
+**Phase:** All Phases  
+**Status:** MANDATORY WORKFLOW
+
+## Purpose
+
+Define the complete lifecycle management for Epics, Features, Stories, and Tasks in OpenProject, including status transitions, documentation requirements, and quality gates. This workflow ensures proper hierarchy, comprehensive documentation, and automated status transitions.
+
+## Work Package Hierarchy
+
+```
+Project
+└── Epic (type_id=40)
+    └── Feature (type_id=39, if present) [OPTIONAL but RECOMMENDED for new epics]
+        └── User Story (type_id=41)
+            └── Task (type_id=36) / Bug (type_id=42)
+```
+
+**CRITICAL:** Maintain this hierarchy using OpenProject parent-child relationships.
+
+**Note on Features:**
+- Features are **recommended** for breaking down epics into sizable, testable chunks
+- For **new epics going forward**, use Features when appropriate
+- For **existing epics**, do NOT retroactively create Features (to avoid wasting time)
+
+---
+
+## EPIC Requirements
+
+### 1. Epic Creation and Documentation
+
+**Requirement:** Every Epic MUST have:
+
+- **High-Level Description:** Business goal, scope, success criteria, dependencies, technical considerations, timeline
+- **Story Breakdown:** Complete list of all stories with goals and dependencies
+- **Test Story:** A dedicated test story (Story X.T) for validating the complete epic
+- **NFR Verification Story:** A dedicated story (Story X.NFR) for verifying Non-Functional Requirements (high concurrency, high availability, high scalability, high performance)
+- **Design Document:** High-level design and implementation document attached to the epic
+
+**Implementation:**
+
+```python
+# Create Epic with comprehensive description
+epic = mcp_openproject_create_work_package(
+    project_id=8,
+    subject="Epic X: [Epic Name]",
+    type_id=40,  # Epic
+    description="""
+    ## Business Goal
+    [Clear statement of business value]
+    
+    ## Scope
+    **Included:** [Features included]
+    **Excluded:** [Features explicitly excluded]
+    
+    ## Success Criteria
+    - [Measurable success criteria]
+    
+    ## Story Breakdown
+    ### Story X.1: [Story Name]
+    **Goal:** [What this story accomplishes]
+    **Dependencies:** [Other stories or systems]
+    
+    ### Story X.T: Epic X Testing and Validation
+    **Goal:** Validate complete epic functionality
+    **Test Document:** epic-X-test-plan.md
+    
+    ### Story X.NFR: Epic X NFR Verification
+    **Goal:** Verify Non-Functional Requirements (high concurrency, high availability, high scalability, high performance)
+    **NFR Document:** epic-X-nfr-verification.md
+    **Tasks:**
+    - Task X.NFR.1: Verify connection pooling and resource management
+    - Task X.NFR.2: Verify concurrent request handling
+    - Task X.NFR.3: Verify fault tolerance and fallback mechanisms
+    - Task X.NFR.4: Verify performance targets (latency, throughput)
+    - Task X.NFR.5: Create NFR verification report
+    """,
+    priority_id=74  # High
+)
+
+# Attach design document
+mcp_openproject_add_work_package_attachment(
+    work_package_id=epic["work_package"]["id"],
+    file_data=base64_encoded_design_doc,
+    filename="epic-X-design.md",
+    content_type="text/markdown",
+    description="Epic X Design and Implementation Document"
+)
+```
+
+### 2. Epic Status Transitions
+
+**Rule:** Epic status transitions are **IMMEDIATE** when conditions are met.
+
+| When | Epic Status | Action Owner | MCP Tool Call |
+|------|-------------|--------------|---------------|
+| First story → "In progress" (77) | Epic → "In progress" (77) | PM/Dev | `mcp_openproject_update_work_package(work_package_id=epic_id, status_id=77)` |
+| Last story → "Closed" (82) **AND** Integration tests pass | Epic → "Closed" (82) | Test Team | `mcp_openproject_update_work_package(work_package_id=epic_id, status_id=82)` |
+
+**CRITICAL:** Epic can **ONLY** be closed after:
+1. ✅ All stories are "Closed" (82) (including Story X.T and Story X.NFR)
+2. ✅ All tasks in all stories are "Closed" (82)
+3. ✅ **Integration tests pass** (tests/integration/test_epic*_*.py)
+4. ✅ **NFR verification complete** (Story X.NFR closed with verification report)
+5. ✅ Test documentation is created and attached
+
+**Implementation:**
+
+```python
+def update_epic_status_based_on_stories(epic_id: int):
+    """
+    Update epic status based on story statuses.
+    Called IMMEDIATELY when story status changes.
+    """
+    # Get all stories for epic
+    children = mcp_openproject_get_work_package_children(
+        parent_id=epic_id,
+        status="all"  # Include closed stories
+    )
+    stories = [c for c in children.get("children", []) if c["type"] == "User story"]
+    
+    if not stories:
+        return
+    
+    # Check if any story is in progress
+    any_in_progress = any(s["status"]["id"] == 77 for s in stories)
+    if any_in_progress:
+        epic = mcp_openproject_get_work_package(work_package_id=epic_id)
+        if epic["work_package"]["status"]["id"] != 77:
+            mcp_openproject_update_work_package(
+                work_package_id=epic_id,
+                status_id=77  # In progress
+            )
+    
+    # Check if all stories are closed
+    all_closed = all(s["status"]["id"] == 82 for s in stories)
+    if all_closed:
+        epic = mcp_openproject_get_work_package(work_package_id=epic_id)
+        if epic["work_package"]["status"]["id"] != 82:
+            mcp_openproject_update_work_package(
+                work_package_id=epic_id,
+                status_id=82  # Closed
+            )
+```
+
+---
+
+## STORY Requirements
+
+### 1. Story Creation and Documentation
+
+**Requirement:** Every Story MUST have:
+
+- **Well-Written Description:** User story format with acceptance criteria
+- **Tasks:** All tasks articulated and detailed (created during grooming)
+- **UI Document:** For UI stories, wireframe or UI design document attached
+- **Test Task:** A test task (Task X.Y.T) that includes creating and attaching a Story test document
+
+**Implementation:**
+
+```python
+# Create Story with comprehensive description
+story = mcp_openproject_create_work_package(
+    project_id=8,
+    subject="Story X.Y: [Story Name]",
+    type_id=41,  # User Story
+    description="""
+    As a **[User Role]**,
+    I want **[Functionality]**,
+    So that **[Business Value]**.
+    
+    **Acceptance Criteria:**
+    - **Given** [Context]
+    - **When** [Action]
+    - **Then** [Expected Result]
+    """,
+    priority_id=73  # Normal
+)
+
+# For UI stories, attach wireframe/UI document
+if is_ui_story:
+    mcp_openproject_add_work_package_attachment(
+        work_package_id=story["work_package"]["id"],
+        file_data=base64_encoded_ui_doc,
+        filename="story-X-Y-ui-design.md",
+        content_type="text/markdown",
+        description="Story X.Y UI Design and Wireframe"
+    )
+```
+
+### 2. Story Status Transitions
+
+**Rule:** Story status transitions are **IMMEDIATE** when conditions are met.
+
+| When | Story Status | Action Owner | MCP Tool Call |
+|------|-------------|--------------|---------------|
+| First task → "In progress" (77) | Story → "In progress" (77) | Dev | `mcp_openproject_update_work_package(work_package_id=story_id, status_id=77)` |
+| Test task → "In testing" (79) + all other tasks closed | Story → "In testing" (79) | Dev | `mcp_openproject_update_work_package(work_package_id=story_id, status_id=79)` |
+| All tasks + bugs → "Closed" (82) | Story → "Closed" (82) | Dev/Test Team | `mcp_openproject_update_work_package(work_package_id=story_id, status_id=82)` |
+
+**Implementation:**
+
+```python
+def update_story_status_based_on_tasks(story_id: int):
+    """
+    Update story status based on task statuses.
+    Called IMMEDIATELY when task status changes.
+    """
+    # Get all tasks for story
+    children = mcp_openproject_get_work_package_children(
+        parent_id=story_id,
+        status="all"  # Include closed tasks
+    )
+    tasks = [c for c in children.get("children", []) if c["type"] == "Task"]
+    bugs = [c for c in children.get("children", []) if c["type"] == "Bug"]
+    
+    if not tasks:
+        return
+    
+    # Check if any task is in progress
+    any_in_progress = any(t["status"]["id"] == 77 for t in tasks)
+    if any_in_progress:
+        story = mcp_openproject_get_work_package(work_package_id=story_id)
+        if story["work_package"]["status"]["id"] != 77:
+            mcp_openproject_update_work_package(
+                work_package_id=story_id,
+                status_id=77  # In progress
+            )
+    
+    # Check if test task is in testing and all other tasks are closed
+    test_task = next((t for t in tasks if "T" in t["subject"] or "test" in t["subject"].lower()), None)
+    if test_task and test_task["status"]["id"] == 79:
+        other_tasks_closed = all(t["status"]["id"] == 82 for t in tasks if t["id"] != test_task["id"])
+        if other_tasks_closed:
+            story = mcp_openproject_get_work_package(work_package_id=story_id)
+            if story["work_package"]["status"]["id"] != 79:
+                mcp_openproject_update_work_package(
+                    work_package_id=story_id,
+                    status_id=79  # In testing
+                )
+    
+    # Check if all tasks and bugs are closed
+    all_tasks_closed = all(t["status"]["id"] == 82 for t in tasks)
+    all_bugs_closed = all(b["status"]["id"] == 82 for b in bugs) if bugs else True
+    if all_tasks_closed and all_bugs_closed:
+        story = mcp_openproject_get_work_package(work_package_id=story_id)
+        if story["work_package"]["status"]["id"] != 82:
+            mcp_openproject_update_work_package(
+                work_package_id=story_id,
+                status_id=82  # Closed
+            )
+```
+
+---
+
+## TASK Requirements
+
+### 1. Task Creation (During Story Grooming)
+
+**CRITICAL:** Before creating tasks, **ALWAYS check for existing tasks** to prevent duplicates.
+
+**Requirement:**
+- Check for existing tasks using `status="all"` (includes closed tasks)
+- Filter by subject to identify duplicates
+- Only create tasks that don't already exist
+
+**Implementation:**
+
+```python
+def check_existing_tasks(story_id: int) -> list[dict]:
+    """
+    Check for existing tasks for a story, including closed tasks.
+    CRITICAL: Use status="all" to include closed tasks.
+    """
+    children = mcp_openproject_get_work_package_children(
+        parent_id=story_id,
+        status="all"  # Include closed tasks
+    )
+    return children.get("children", [])
+
+def create_story_tasks(story_id: int, tasks: list[dict]):
+    """
+    Create tasks for a story, checking for duplicates first.
+    """
+    # Get existing tasks
+    existing = check_existing_tasks(story_id)
+    existing_subjects = {t["subject"] for t in existing}
+    
+    # Filter out duplicates
+    new_tasks = [
+        t for t in tasks
+        if t["subject"] not in existing_subjects
+    ]
+    
+    if not new_tasks:
+        print(f"No new tasks to create for story {story_id}")
+        return
+    
+    # Create new tasks
+    result = mcp_openproject_bulk_create_work_packages(
+        project_id=8,
+        work_packages=json.dumps(new_tasks),
+        continue_on_error=True
+    )
+    
+    # Set parent relationships
+    for task in result.get("created", []):
+        mcp_openproject_set_work_package_parent(
+            work_package_id=task["id"],
+            parent_id=story_id
+        )
+```
+
+### 2. Test Task Requirements
+
+**Requirement:** Every story MUST have a test task named "Task X.Y.T: Story X.Y Testing and Validation".
+
+**Test Task Must:**
+- Create a Story test document (`story-X-Y-test-plan.md`)
+- Attach the test document to the story
+- Validate all acceptance criteria
+- Run integration tests
+
+**Implementation:**
+
+```python
+# Create test task
+test_task = mcp_openproject_create_work_package(
+    project_id=8,
+    subject="Task X.Y.T: Story X.Y Testing and Validation",
+    type_id=36,  # Task
+    description="""
+    **Test Task for Story X.Y**
+    
+    **Activities:**
+    1. Create Story test document: `story-X-Y-test-plan.md`
+    2. Attach test document to Story X.Y
+    3. Validate all acceptance criteria
+    4. Run integration tests
+    5. Document test results
+    
+    **Test Document Location:** `_bmad-output/planning-artifacts/story-X-Y-test-plan.md`
+    """,
+    status_id=71  # New
+)
+
+# Set parent relationship
+mcp_openproject_set_work_package_parent(
+    work_package_id=test_task["work_package"]["id"],
+    parent_id=story_id
+)
+```
+
+---
+
+## Document Locations
+
+**CRITICAL:** Never create duplicate documentation. Use these locations:
+
+- **Epic Design:** `_bmad-output/planning-artifacts/epic-X-design.md` or `_bmad-output/epic-X-design.md`
+- **Story UI Design:** `_bmad-output/planning-artifacts/story-X-Y-ui-design.md` or `_bmad-output/story-X-Y-ui-design.md`
+- **Story Test Plan:** `_bmad-output/planning-artifacts/story-X-Y-test-plan.md` or `_bmad-output/story-X-Y-test-plan.md`
+- **Epic Test Plan:** `_bmad-output/planning-artifacts/epic-X-test-plan.md` or `_bmad-output/epic-X-test-plan.md`
+
+**Attach documents to OpenProject work packages as needed, but store source in `_bmad-output/`.**
+
+---
+
+## Action Owner Responsibilities
+
+### Product Manager (PM)
+
+**Epic Creation:**
+- Create epic with comprehensive description
+- Include story breakdown
+- Create test story (Story X.T)
+- Create NFR verification story (Story X.NFR)
+- Attach design document
+
+**Story Grooming:**
+- Create story with acceptance criteria
+- Break down into tasks
+- **CRITICAL:** Check for existing tasks before creating
+- Create test task (Task X.Y.T)
+- Attach UI documents for UI stories
+
+### Developer (Dev)
+
+**Task Implementation:**
+- Update task status to "In progress" (77) when starting
+- **IMMEDIATELY** update story status to "In progress" (77) if first task
+- Update task status to "In testing" (79) when complete
+- **IMMEDIATELY** update story status to "In testing" (79) when test task ready
+- **IMMEDIATELY** update story status to "Closed" (82) when all tasks closed
+
+### Test Team
+
+**Test Validation:**
+- Create test documents
+- Attach test documents to stories/epics
+- Validate acceptance criteria
+- **NFR Verification:**
+  - Verify connection pooling and resource management
+  - Verify concurrent request handling
+  - Verify fault tolerance and fallback mechanisms
+  - Verify performance targets (latency, throughput)
+  - Create NFR verification report
+- Close tasks/stories when validated
+- **IMMEDIATELY** update epic status to "Closed" (82) when last story closed (including NFR verification)
+
+---
+
+## Integration with Other Workflows
+
+- **create-epics-and-stories:** Creates epics and stories following these requirements
+- **groom-story:** Creates tasks following duplicate prevention rules
+- **dev-story:** Updates statuses following immediate transition rules
+- **test-validation:** Validates and closes work packages following these rules
+
+---
+
+## References
+
+- **Complete Workflow Requirements:** `docs/BMAD_COMPLETE_WORKFLOW_REQUIREMENTS.md`
+- **Quick Reference:** `docs/BMAD_WORKFLOW_QUICK_REFERENCE.md`
+- **Task Creation Workflow:** `docs/WORKFLOW_TASK_CREATION_REQUIREMENT.md`
+- **Status Helper Functions:** `scripts/openproject_status_helpers.py`

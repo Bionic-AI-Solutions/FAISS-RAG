@@ -30,30 +30,85 @@ Groom a story by breaking it down into implementable tasks and creating them in 
 
 **CRITICAL:** All tasks MUST be created in OpenProject during grooming, before story moves to "In progress".
 
+**⚠️ DUPLICATE PREVENTION:** Always check for existing tasks (including closed ones) before creating new tasks.
+
 ```python
-# Create all tasks for the story
-tasks = [
+# Step 3.1: Check for existing tasks (CRITICAL - prevents duplicates)
+def check_existing_tasks(story_id: int) -> list[dict]:
+    """
+    Check for existing tasks for a story, including closed tasks.
+    CRITICAL: Use status="all" to include closed tasks.
+    """
+    children = mcp_openproject_get_work_package_children(
+        parent_id=story_id,
+        status="all"  # Include closed tasks - CRITICAL!
+    )
+    return children.get("children", [])
+
+# Get existing tasks
+existing = check_existing_tasks(story_id)
+existing_subjects = {t["subject"] for t in existing}
+
+# Step 3.2: Define all tasks needed for the story
+all_tasks = [
     {
         "subject": "Task 1: [Task Title]",
         "type_id": 36,  # Task
         "description": "Detailed description with acceptance criteria...",
-        "status_id": 71  # New
     },
-    # ... all tasks
+    {
+        "subject": "Task X.Y.T: Story X.Y Testing and Validation",  # Test task
+        "type_id": 36,  # Task
+        "description": """
+        **Test Task for Story X.Y**
+        
+        **Activities:**
+        1. Create Story test document: `story-X-Y-test-plan.md`
+        2. Attach test document to Story X.Y
+        3. Validate all acceptance criteria
+        4. Run integration tests
+        """,
+    },
+    # NFR Verification Tasks (if story affects NFRs)
+    {
+        "subject": "Task X.Y.NFR: Story X.Y NFR Verification",  # NFR verification task
+        "type_id": 36,  # Task
+        "description": """
+        **NFR Verification Task for Story X.Y**
+        
+        **Activities:**
+        1. Verify connection pooling (if applicable)
+        2. Verify concurrent request handling
+        3. Verify fault tolerance (if applicable)
+        4. Verify performance targets (if applicable)
+        5. Document NFR compliance in story test document
+        """,
+    },
+    # ... all other tasks
 ]
 
-# Bulk create
-result = mcp_openproject_bulk_create_work_packages(
-    project_id=8,
-    work_packages=tasks
-)
+# Step 3.3: Filter out duplicates
+new_tasks = [
+    t for t in all_tasks
+    if t["subject"] not in existing_subjects
+]
 
-# Set parent relationships
-for task in result["created"]:
-    mcp_openproject_set_work_package_parent(
-        work_package_id=task["id"],
-        parent_id=story_id
+if not new_tasks:
+    print(f"No new tasks to create for story {story_id} (all tasks already exist)")
+else:
+    # Step 3.4: Bulk create new tasks
+    result = mcp_openproject_bulk_create_work_packages(
+        project_id=8,
+        work_packages=json.dumps(new_tasks),  # Must be JSON string
+        continue_on_error=True
     )
+    
+    # Step 3.5: Set parent relationships
+    for task in result.get("created", []):
+        mcp_openproject_set_work_package_parent(
+            work_package_id=task["id"],
+            parent_id=story_id
+        )
 ```
 
 ### Step 4: Verify Tasks Created
@@ -80,8 +135,11 @@ mcp_openproject_update_work_package(
 - [ ] Story acceptance criteria reviewed
 - [ ] Story broken down into tasks
 - [ ] Story file created with all tasks
-- [ ] All tasks created in OpenProject
+- [ ] **Checked for existing tasks (including closed) - prevents duplicates**
+- [ ] All new tasks created in OpenProject
 - [ ] All tasks linked to story (parent relationship)
+- [ ] Test task (Task X.Y.T) created
+- [ ] NFR verification task (Task X.Y.NFR) created (if story affects NFRs)
 - [ ] Task descriptions include acceptance criteria
 - [ ] Story status updated to "In progress" (77)
 
@@ -99,8 +157,10 @@ mcp_openproject_update_work_package(
 
 ## References
 
+- **Epic-Story Lifecycle:** `@bmad/bmm/workflows/epic-story-lifecycle` - Complete lifecycle requirements
 - **Workflow Requirement:** `docs/WORKFLOW_TASK_CREATION_REQUIREMENT.md`
 - **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`
+- **Duplicate Prevention:** `docs/TASK_CREATION_DUPLICATE_PREVENTION.md`
 - **QA Testing Workflow:** `docs/QA_TESTING_WORKFLOW.md`
 - **Complete Agile Workflow:** `docs/COMPLETE_AGILE_WORKFLOW.md`
 - **PM Agent:** `@bmad/bmm/agents/pm`
