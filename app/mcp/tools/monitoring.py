@@ -739,3 +739,298 @@ async def rag_get_search_analytics(
             await session.close()
         break
 
+
+async def _aggregate_memory_analytics(
+    tenant_id: UUID,
+    start_time: datetime,
+    end_time: datetime,
+    session: AsyncSession,
+    user_id: Optional[UUID] = None,
+) -> Dict[str, Any]:
+    """
+    Aggregate memory analytics from audit logs.
+    
+    Args:
+        tenant_id: Tenant ID
+        start_time: Start of the date range
+        end_time: End of the date range
+        session: SQLAlchemy async session
+        user_id: Optional user ID filter
+        
+    Returns:
+        dict: Aggregated memory analytics
+    """
+    filters = [
+        AuditLog.tenant_id == tenant_id,
+        AuditLog.action.like("mem0_%"),
+        AuditLog.timestamp >= start_time,
+        AuditLog.timestamp <= end_time,
+    ]
+    
+    if user_id:
+        filters.append(AuditLog.user_id == user_id)
+    
+    # Fetch all relevant audit logs for memory operations
+    audit_logs_query = select(AuditLog).where(and_(*filters))
+    audit_logs_result = await session.execute(audit_logs_query)
+    all_audit_logs = audit_logs_result.scalars().all()
+    
+    # Filter for successful post-execution logs only
+    memory_logs = [
+        log for log in all_audit_logs
+        if log.details
+        and log.details.get("phase") == "post_execution"
+        and log.details.get("execution_success", False)
+    ]
+    
+    if not memory_logs:
+        return {
+            "total_memories": 0,
+            "active_users": 0,
+            "memory_usage_trends": {},
+            "top_memory_keys": [],
+            "memory_access_patterns": {
+                "mem0_get_user_memory": 0,
+                "mem0_update_memory": 0,
+                "mem0_search_memory": 0,
+            },
+        }
+    
+    # Extract metrics from logs
+    total_memories = len(memory_logs)
+    active_user_ids = set()
+    memory_keys = []
+    access_patterns = {
+        "mem0_get_user_memory": 0,
+        "mem0_update_memory": 0,
+        "mem0_search_memory": 0,
+    }
+    memory_trends: Dict[str, int] = {}  # Date -> count
+    
+    for log in memory_logs:
+        # Track active users
+        if log.user_id:
+            active_user_ids.add(log.user_id)
+        
+        # Track access patterns
+        action = log.action
+        if action in access_patterns:
+            access_patterns[action] += 1
+        
+        # Extract memory_key from request_params or resource_id
+        request_params = log.details.get("request_params", {})
+        memory_key = request_params.get("memory_key") or log.resource_id
+        if memory_key:
+            memory_keys.append(memory_key)
+        
+        # Aggregate trends by date (YYYY-MM-DD)
+        date_key = log.timestamp.date().isoformat()
+        memory_trends[date_key] = memory_trends.get(date_key, 0) + 1
+    
+    # Get top memory keys (most frequent)
+    memory_key_counts = Counter(memory_keys)
+    top_memory_keys = [
+        {"memory_key": key, "count": count}
+        for key, count in memory_key_counts.most_common(10)
+    ]
+    
+    return {
+        "total_memories": total_memories,
+        "active_users": len(active_user_ids),
+        "memory_usage_trends": memory_trends,
+        "top_memory_keys": top_memory_keys,
+        "memory_access_patterns": access_patterns,
+    }
+
+
+@mcp_server.tool()
+async def rag_get_memory_analytics(
+    tenant_id: Optional[str] = None,
+    date_range: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Retrieve memory analytics for a tenant.
+    
+    Aggregates memory analytics from audit logs including:
+    - Total memory operations
+    - Active users with memory operations
+    - Memory usage trends over time
+    - Top memory keys (most frequently accessed)
+    - Memory access patterns (get, update, search)
+    
+    Supports filtering by date range and user_id.
+    Results are cached for 5 minutes for performance.
+    
+    Args:
+        tenant_id: Tenant ID (UUID string). If not provided, uses tenant from context.
+                   Uber Admin can query any tenant; Tenant Admin can only query their own tenant.
+        date_range: Optional date range in format "start_time,end_time" (ISO 8601 format).
+                    If not provided, defaults to last 30 days.
+        user_id: Optional user ID (UUID string) to filter memory operations by specific user.
+    
+    Returns:
+        Dictionary containing memory analytics:
+        {
+            "tenant_id": "...",
+            "date_range": {
+                "start_time": "...",
+                "end_time": "..."
+            },
+            "analytics": {
+                "total_memories": 1234,
+                "active_users": 45,
+                "memory_usage_trends": {
+                    "2025-01-15": 50,
+                    "2025-01-16": 75,
+                    ...
+                },
+                "top_memory_keys": [
+                    {"memory_key": "user_preference", "count": 42},
+                    ...
+                ],
+                "memory_access_patterns": {
+                    "mem0_get_user_memory": 800,
+                    "mem0_update_memory": 300,
+                    "mem0_search_memory": 134
+                }
+            },
+            "filters": {
+                "user_id": "..."
+            },
+            "cached": false,
+            "timestamp": "..."
+        }
+    
+    Raises:
+        AuthorizationError: If user doesn't have permission
+        ValueError: If tenant_id, date_range, or user_id is invalid
+    """
+    # Check permissions
+    current_role = get_role_from_context()
+    if not current_role:
+        raise AuthorizationError("Role not found in context.")
+    
+    try:
+        check_tool_permission(current_role, "rag_get_memory_analytics")
+    except AuthorizationError as e:
+        raise AuthorizationError(f"Access denied: {str(e)}")
+    
+    # Get tenant ID
+    current_tenant_id = get_tenant_id_from_context()
+    
+    query_tenant_id = None
+    if tenant_id:
+        try:
+            query_tenant_id = UUID(tenant_id)
+        except ValueError:
+            raise ValueError(f"Invalid tenant_id format: {tenant_id}")
+        
+        # Tenant Admin can only query their own tenant
+        if current_role == UserRole.TENANT_ADMIN and query_tenant_id != current_tenant_id:
+            raise AuthorizationError(
+                "Tenant Admin can only query memory analytics for their own tenant."
+            )
+    else:
+        # If no tenant_id provided, use current tenant from context for Tenant Admin
+        if current_role == UserRole.TENANT_ADMIN:
+            query_tenant_id = current_tenant_id
+        elif current_role != UserRole.UBER_ADMIN:
+            # For other roles (e.g., END_USER), tenant_id is mandatory
+            raise ValueError("Tenant ID is required for this role.")
+    
+    if not query_tenant_id and current_role != UserRole.UBER_ADMIN:
+        raise ValueError("Tenant ID must be provided or available in context.")
+    
+    # Parse date range
+    start_datetime: datetime
+    end_datetime: datetime
+    
+    if date_range:
+        try:
+            start_time_str, end_time_str = date_range.split(",")
+            start_datetime = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+            end_datetime = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError(
+                f"Invalid date_range format: {date_range}. Use 'start_time,end_time' in ISO 8601 format."
+            )
+    else:
+        # Default to last 30 days
+        end_datetime = datetime.utcnow()
+        start_datetime = end_datetime - timedelta(days=30)
+    
+    # Parse user_id filter
+    query_user_id: Optional[UUID] = None
+    if user_id:
+        try:
+            query_user_id = UUID(user_id)
+        except ValueError:
+            raise ValueError(f"Invalid user_id format: {user_id}")
+    
+    # Build cache key
+    cache_key = (
+        f"memory_analytics:{query_tenant_id}:"
+        f"{start_datetime.isoformat()}:{end_datetime.isoformat()}"
+    )
+    if query_user_id:
+        cache_key += f":user:{query_user_id}"
+    
+    # Try to get from cache
+    cached_analytics = await _get_cached_stats(cache_key)
+    if cached_analytics:
+        logger.info("Returning cached memory analytics", tenant_id=str(query_tenant_id))
+        return {
+            **cached_analytics,
+            "cached": True,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    
+    logger.info(
+        "Aggregating memory analytics",
+        tenant_id=str(query_tenant_id),
+        start_time=start_datetime,
+        end_time=end_datetime,
+        user_id=str(query_user_id) if query_user_id else None,
+    )
+    
+    async for session in get_db_session():
+        try:
+            analytics = await _aggregate_memory_analytics(
+                tenant_id=query_tenant_id,
+                start_time=start_datetime,
+                end_time=end_datetime,
+                session=session,
+                user_id=query_user_id,
+            )
+            
+            # Prepare response
+            result = {
+                "tenant_id": str(query_tenant_id),
+                "date_range": {
+                    "start_time": start_datetime.isoformat(),
+                    "end_time": end_datetime.isoformat(),
+                },
+                "analytics": analytics,
+                "filters": {
+                    "user_id": str(query_user_id) if query_user_id else None,
+                },
+                "cached": False,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            
+            # Cache the result
+            await _cache_stats(cache_key, result)
+            
+            logger.info(
+                "Memory analytics aggregated",
+                tenant_id=str(query_tenant_id),
+                total_memories=analytics["total_memories"],
+                active_users=analytics["active_users"],
+            )
+            
+            return result
+        finally:
+            await session.close()
+        break
+

@@ -37,6 +37,7 @@ def get_tool_func(tool_name: str):
 
 rag_get_usage_stats = get_tool_func("rag_get_usage_stats")
 rag_get_search_analytics = get_tool_func("rag_get_search_analytics")
+rag_get_memory_analytics = get_tool_func("rag_get_memory_analytics")
 
 
 class TestRagGetUsageStats:
@@ -747,4 +748,319 @@ class TestRagGetSearchAnalytics:
             with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
                 with pytest.raises(ValueError, match="Invalid date_range format"):
                     await rag_get_search_analytics(date_range="invalid-format")
+
+
+class TestRagGetMemoryAnalytics:
+    """Tests for rag_get_memory_analytics MCP tool."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        # Reset context variables before each test
+        _role_context.set(None)
+        _tenant_id_context.set(None)
+        _user_id_context.set(None)
+
+    @pytest.mark.asyncio
+    async def test_requires_tenant_admin_or_uber_admin(self):
+        """Test that memory analytics requires Tenant Admin or Uber Admin role."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        _role_context.set(UserRole.END_USER)  # Not allowed
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.END_USER):
+            with pytest.raises(AuthorizationError):
+                await rag_get_memory_analytics()
+
+    @pytest.mark.asyncio
+    async def test_tenant_admin_can_query_own_tenant(self):
+        """Test that Tenant Admin can query their own tenant."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Mock database session
+        mock_session = AsyncMock()
+        # Mock audit log queries - return empty lists (no logs)
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []  # No audit logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_memory_analytics()
+
+                        assert result["tenant_id"] == str(tenant_id)
+                        assert "analytics" in result
+                        assert result["analytics"]["total_memories"] == 0
+                        assert result["analytics"]["active_users"] == 0
+                        assert result["analytics"]["memory_usage_trends"] == {}
+                        assert result["analytics"]["top_memory_keys"] == []
+                        assert result["analytics"]["memory_access_patterns"]["mem0_get_user_memory"] == 0
+                        assert not result["cached"]
+
+    @pytest.mark.asyncio
+    async def test_uber_admin_can_query_any_tenant(self):
+        """Test that Uber Admin can query any tenant."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []  # No audit logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                    result = await rag_get_memory_analytics(tenant_id=str(tenant_id))
+
+                    assert result["tenant_id"] == str(tenant_id)
+                    assert "analytics" in result
+                    assert not result["cached"]
+
+    @pytest.mark.asyncio
+    async def test_tenant_admin_cannot_query_other_tenant(self):
+        """Test that Tenant Admin cannot query other tenants."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        tenant_id = uuid4()
+        other_tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with pytest.raises(AuthorizationError, match="Tenant Admin can only query"):
+                    await rag_get_memory_analytics(tenant_id=str(other_tenant_id))
+
+    @pytest.mark.asyncio
+    async def test_aggregates_memory_analytics(self):
+        """Test that memory analytics are correctly aggregated from audit logs."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        tenant_id = uuid4()
+        user_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Create mock audit logs with memory operations
+        now = datetime.utcnow()
+        memory_logs = [
+            AuditLog(
+                log_id=uuid4(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="mem0_get_user_memory",
+                resource_type="memory_operation",
+                resource_id="user_preference",
+                timestamp=now - timedelta(hours=1),
+                details={
+                    "phase": "post_execution",
+                    "execution_success": True,
+                    "request_params": {"memory_key": "user_preference"},
+                },
+            ),
+            AuditLog(
+                log_id=uuid4(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="mem0_update_memory",
+                resource_type="memory_operation",
+                resource_id="user_preference",
+                timestamp=now - timedelta(hours=2),
+                details={
+                    "phase": "post_execution",
+                    "execution_success": True,
+                    "request_params": {"memory_key": "user_preference"},
+                },
+            ),
+            AuditLog(
+                log_id=uuid4(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="mem0_search_memory",
+                resource_type="memory_operation",
+                resource_id=None,
+                timestamp=now - timedelta(hours=3),
+                details={
+                    "phase": "post_execution",
+                    "execution_success": True,
+                    "request_params": {},
+                },
+            ),
+        ]
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = memory_logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_memory_analytics()
+
+                        assert result["tenant_id"] == str(tenant_id)
+                        assert result["analytics"]["total_memories"] == 3
+                        assert result["analytics"]["active_users"] == 1
+                        assert result["analytics"]["memory_access_patterns"]["mem0_get_user_memory"] == 1
+                        assert result["analytics"]["memory_access_patterns"]["mem0_update_memory"] == 1
+                        assert result["analytics"]["memory_access_patterns"]["mem0_search_memory"] == 1
+                        assert len(result["analytics"]["top_memory_keys"]) > 0
+                        assert "user_preference" in [k["memory_key"] for k in result["analytics"]["top_memory_keys"]]
+                        assert len(result["analytics"]["memory_usage_trends"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_filters_by_user_id(self):
+        """Test that memory analytics can be filtered by user_id."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        tenant_id = uuid4()
+        user_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []  # No logs for this user
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_memory_analytics(user_id=str(user_id))
+
+                        assert result["tenant_id"] == str(tenant_id)
+                        assert result["filters"]["user_id"] == str(user_id)
+                        assert result["analytics"]["total_memories"] == 0
+
+    @pytest.mark.asyncio
+    async def test_caching(self):
+        """Test that memory analytics are cached."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        # Mock cached result
+        cached_result = {
+            "tenant_id": str(tenant_id),
+            "date_range": {
+                "start_time": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+                "end_time": datetime.utcnow().isoformat(),
+            },
+            "analytics": {
+                "total_memories": 100,
+                "active_users": 10,
+                "memory_usage_trends": {},
+                "top_memory_keys": [],
+                "memory_access_patterns": {
+                    "mem0_get_user_memory": 50,
+                    "mem0_update_memory": 30,
+                    "mem0_search_memory": 20,
+                },
+            },
+            "filters": {"user_id": None},
+        }
+
+        # Mock Redis (with cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = json.dumps(cached_result)
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                    result = await rag_get_memory_analytics()
+
+                    assert result["cached"] is True
+                    assert result["analytics"]["total_memories"] == 100
+                    assert result["analytics"]["active_users"] == 10
+                    # Should not call database
+                    mock_redis.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invalid_tenant_id(self):
+        """Test that invalid tenant_id raises ValueError."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with pytest.raises(ValueError, match="Invalid tenant_id format"):
+                await rag_get_memory_analytics(tenant_id="invalid-uuid")
+
+    @pytest.mark.asyncio
+    async def test_invalid_user_id(self):
+        """Test that invalid user_id raises ValueError."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with pytest.raises(ValueError, match="Invalid user_id format"):
+                    await rag_get_memory_analytics(user_id="invalid-uuid")
+
+    @pytest.mark.asyncio
+    async def test_invalid_date_range(self):
+        """Test that invalid date_range raises ValueError."""
+        if not rag_get_memory_analytics:
+            pytest.skip("rag_get_memory_analytics not registered")
+
+        tenant_id = uuid4()
+        _role_context.set(UserRole.TENANT_ADMIN)
+        _tenant_id_context.set(tenant_id)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
+                with pytest.raises(ValueError, match="Invalid date_range format"):
+                    await rag_get_memory_analytics(date_range="invalid-format")
 
