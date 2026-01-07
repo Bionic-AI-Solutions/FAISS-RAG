@@ -15,6 +15,7 @@ from app.mcp.tools import memory_management  # noqa: F401
 from app.mcp.tools import session_continuity  # noqa: F401
 from app.mcp.tools import user_recognition  # noqa: F401
 from app.mcp.tools import backup_restore  # noqa: F401
+from app.mcp.tools import monitoring  # noqa: F401
 
 __all__ = [
     "discovery",
@@ -29,6 +30,7 @@ __all__ = [
     "session_continuity",
     "user_recognition",
     "backup_restore",
+    "monitoring",
 ]
 
 
