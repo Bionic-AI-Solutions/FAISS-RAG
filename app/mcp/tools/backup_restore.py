@@ -25,7 +25,7 @@ from app.db.repositories.tenant_repository import TenantRepository
 from app.db.repositories.user_repository import UserRepository
 from app.db.repositories.tenant_config_repository import TenantConfigRepository
 from app.mcp.middleware.rbac import UserRole, check_tool_permission
-from app.mcp.middleware.tenant import get_tenant_id_from_context
+from app.mcp.middleware.tenant import get_tenant_id_from_context, get_role_from_context
 from app.mcp.server import mcp_server
 from app.services.faiss_manager import faiss_manager, get_tenant_index_path
 from app.services.minio_client import create_minio_client, get_tenant_bucket, get_document_content
@@ -320,8 +320,11 @@ async def rag_backup_tenant_data(
         ValidationError: If backup_type is invalid
     """
     # Check permissions
-    role = check_tool_permission("rag_backup_tenant_data")
-    if role not in {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN}:
+    current_role = get_role_from_context()
+    if not current_role:
+        raise AuthorizationError("Role not found in context")
+    check_tool_permission(current_role, "rag_backup_tenant_data")
+    if current_role not in {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN}:
         raise AuthorizationError("Access denied: Uber Admin or Tenant Admin role required")
     
     # Validate backup_type
@@ -792,8 +795,11 @@ async def rag_restore_tenant_data(
         ValidationError: If restore_type is invalid or confirmation is False
     """
     # Check permissions - Uber Admin only
-    role = check_tool_permission("rag_restore_tenant_data")
-    if role != UserRole.UBER_ADMIN:
+    current_role = get_role_from_context()
+    if not current_role:
+        raise AuthorizationError("Role not found in context")
+    check_tool_permission(current_role, "rag_restore_tenant_data")
+    if current_role != UserRole.UBER_ADMIN:
         raise AuthorizationError("Access denied: Uber Admin role required")
     
     # Require explicit confirmation
@@ -971,8 +977,11 @@ async def rag_rebuild_index(
         ResourceNotFoundError: If tenant not found
     """
     # Check permissions
-    role = check_tool_permission("rag_rebuild_index")
-    if role not in {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN}:
+    current_role = get_role_from_context()
+    if not current_role:
+        raise AuthorizationError("Role not found in context")
+    check_tool_permission(current_role, "rag_rebuild_index")
+    if current_role not in {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN}:
         raise AuthorizationError(
             "Access denied: Only Uber Admin and Tenant Admin roles can rebuild indices."
         )
@@ -1359,8 +1368,11 @@ async def rag_validate_backup(
         ResourceNotFoundError: If tenant or backup not found
     """
     # Check permissions
-    role = check_tool_permission("rag_validate_backup")
-    if role not in {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN}:
+    current_role = get_role_from_context()
+    if not current_role:
+        raise AuthorizationError("Role not found in context")
+    check_tool_permission(current_role, "rag_validate_backup")
+    if current_role not in {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN}:
         raise AuthorizationError("Access denied: Only Uber Admin and Tenant Admin roles can validate backups.")
     
     try:
