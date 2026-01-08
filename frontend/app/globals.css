@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  /* Primary Colors */
+  --color-primary: #1976D2;
+  --color-primary-dark: #1565C0;
+  --color-primary-light: #42A5F5;
+  
+  /* Secondary Colors */
+  --color-secondary: #4CAF50;
+  --color-secondary-dark: #388E3C;
+  --color-secondary-light: #66BB6A;
+  
+  /* Accent Colors */
+  --color-accent: #FF9800;
+  --color-accent-dark: #F57C00;
+  --color-accent-light: #FFB74D;
+  
+  /* Status Colors */
+  --color-success: #4CAF50;
+  --color-warning: #FF9800;
+  --color-error: #F44336;
+  --color-info: #2196F3;
+  
+  /* Role Indicators */
+  --color-uber-admin: #9C27B0;
+  --color-tenant-admin: #2196F3;
+  --color-context-switch: #FFC107;
+  
+  /* Neutral Colors */
+  --color-background: #FAFAFA;
+  --color-surface: #FFFFFF;
+  --color-text-primary: #212121;
+  --color-text-secondary: #757575;
+  --color-border: #E0E0E0;
+  
+  /* Font Families */
+  --font-sans: 'Inter', 'Roboto', system-ui, sans-serif;
+  --font-mono: 'Fira Code', 'Consolas', monospace;
+  
+  /* Spacing (4px grid) */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+}
+
+body {
+  color: var(--color-text-primary);
+  background: var(--color-background);
+  font-family: var(--font-sans);
+}
+
+/* Design System Components */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-dark);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  padding: 12px 24px;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card-metric {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: box-shadow 0.2s;
+}
+
+.card-metric:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}

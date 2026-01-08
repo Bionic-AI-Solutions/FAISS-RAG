@@ -90,6 +90,7 @@ cp "$SOURCE_DIR/docs/BMAD_CURSOR_INTEGRATION_EXPLAINED.md" "$TARGET_DIR/docs/" 2
 cp "$SOURCE_DIR/docs/BMAD_DOCTRINE_INTEGRATION_SUMMARY.md" "$TARGET_DIR/docs/" 2>/dev/null || true
 cp "$SOURCE_DIR/docs/VIRGIN_DEVCONTAINER_CHECKLIST.md" "$TARGET_DIR/docs/" 2>/dev/null || true
 cp "$SOURCE_DIR/docs/VIRGIN_DEVCONTAINER_QUICK_REFERENCE.md" "$TARGET_DIR/docs/" 2>/dev/null || true
+# Note: genImage doctrine is embedded in agent and workflow files, not separate doctrine folder
 
 echo -e "${GREEN}Ensuring project-config.yaml is a template...${NC}"
 # Ensure project-config.yaml has template values (not project-specific)

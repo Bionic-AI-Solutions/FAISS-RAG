@@ -200,8 +200,8 @@ Closed (82) [Test validates] OR Test failed (81) [Iterate]
 ## REFERENCES
 
 - **Test Validation Workflow:** `_bmad/bmm/workflows/4-implementation/test-validation/workflow.yaml`
-- **QA Workflow:** `_bmad/integrations/qa-workflow.mdc` (MANDATORY - automatically loaded)
-- **Testing Strategy:** `_bmad/integrations/testing-strategy.mdc` (MANDATORY - automatically loaded)
+- **QA Workflow:** `_bmad/bmm/testarch/procedures/qa-workflow.md` (MANDATORY - automatically loaded via testing-methodology.mdc)
+- **Testing Strategy:** `_bmad/bmm/testarch/procedures/testing-strategy.md` (MANDATORY - automatically loaded via testing-methodology.mdc)
 - **Task Management:** `docs/TASK_MANAGEMENT_PROCESS.md`
 
 

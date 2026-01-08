@@ -5,6 +5,7 @@ Provides tools for retrieving usage statistics, search analytics, memory analyti
 and system health monitoring.
 """
 
+import asyncio
 import json
 import re
 from collections import Counter
@@ -25,10 +26,13 @@ from app.mcp.middleware.tenant import (
     get_role_from_context,
     get_tenant_id_from_context,
 )
+from app.utils.errors import ValidationError
 from app.mcp.server import mcp_server
 from app.services.minio_client import create_minio_client, get_tenant_bucket
 from app.services.redis_client import get_redis_client
 from app.services.health import check_all_services_health
+from app.services.faiss_manager import faiss_manager, get_tenant_index_path
+from app.services.meilisearch_client import create_meilisearch_client, get_tenant_index_name
 
 logger = structlog.get_logger(__name__)
 
@@ -1431,6 +1435,613 @@ async def rag_get_system_health() -> Dict[str, Any]:
             logger.info(
                 "System health collected",
                 overall_status=health_summary["overall_status"],
+                unhealthy_components=len(health_summary["unhealthy_components"]),
+                degraded_components=len(health_summary["degraded_components"]),
+            )
+            
+            return result
+        finally:
+            await session.close()
+        break
+
+
+async def _check_tenant_faiss_health(tenant_id: UUID) -> Dict[str, Any]:
+    """
+    Check tenant-specific FAISS index health.
+    
+    Args:
+        tenant_id: Tenant ID
+        
+    Returns:
+        dict: Health status for tenant's FAISS index
+    """
+    try:
+        index_file = get_tenant_index_path(tenant_id)
+        
+        if not index_file.exists():
+            return {
+                "status": False,
+                "message": f"FAISS index not found for tenant {tenant_id}",
+            }
+        
+        # Check index file properties (size, readability)
+        try:
+            index_size = index_file.stat().st_size
+            if index_size == 0:
+                return {
+                    "status": False,
+                    "message": f"FAISS index file is empty for tenant {tenant_id}",
+                }
+            
+            # Try to read a small portion to verify it's readable
+            with open(index_file, "rb") as f:
+                f.read(1)  # Read first byte to verify file is readable
+            
+            return {
+                "status": True,
+                "message": f"FAISS index is operational (Size: {index_size} bytes)",
+            }
+        except PermissionError as e:
+            return {
+                "status": False,
+                "message": f"FAISS index file not readable for tenant {tenant_id}: {str(e)}",
+            }
+        except Exception as e:
+            return {
+                "status": False,
+                "message": f"FAISS index health check failed: {str(e)}",
+            }
+    except Exception as e:
+        return {
+            "status": False,
+            "message": f"FAISS health check error: {str(e)}",
+        }
+
+
+async def _check_tenant_minio_health(tenant_id: UUID) -> Dict[str, Any]:
+    """
+    Check tenant-specific MinIO bucket health.
+    
+    Args:
+        tenant_id: Tenant ID
+        
+    Returns:
+        dict: Health status for tenant's MinIO bucket
+    """
+    try:
+        bucket_name = await get_tenant_bucket(tenant_id, create_if_missing=False)
+        client = create_minio_client()
+        
+        if not client.bucket_exists(bucket_name):
+            return {
+                "status": False,
+                "message": f"MinIO bucket '{bucket_name}' not found for tenant {tenant_id}",
+            }
+        
+        # Try to list objects to verify bucket is accessible
+        try:
+            objects = list(client.list_objects(bucket_name, recursive=False, max_keys=1))
+            return {
+                "status": True,
+                "message": f"MinIO bucket '{bucket_name}' is operational",
+            }
+        except Exception as e:
+            return {
+                "status": False,
+                "message": f"MinIO bucket health check failed: {str(e)}",
+            }
+    except Exception as e:
+        return {
+            "status": False,
+            "message": f"MinIO health check error: {str(e)}",
+        }
+
+
+async def _check_tenant_meilisearch_health(tenant_id: UUID) -> Dict[str, Any]:
+    """
+    Check tenant-specific Meilisearch index health.
+    
+    Args:
+        tenant_id: Tenant ID
+        
+    Returns:
+        dict: Health status for tenant's Meilisearch index
+    """
+    try:
+        client = create_meilisearch_client()
+        index_name = await get_tenant_index_name(str(tenant_id))
+        
+        try:
+            index = client.get_index(index_name)
+            # Try to get index stats to verify it's accessible
+            stats = index.get_stats()
+            return {
+                "status": True,
+                "message": f"Meilisearch index '{index_name}' is operational (Documents: {stats.get('numberOfDocuments', 0)})",
+            }
+        except Exception as e:
+            # Index doesn't exist or is inaccessible
+            return {
+                "status": False,
+                "message": f"Meilisearch index '{index_name}' not found or inaccessible: {str(e)}",
+            }
+    except Exception as e:
+        return {
+            "status": False,
+            "message": f"Meilisearch health check error: {str(e)}",
+        }
+
+
+async def _collect_tenant_performance_metrics(
+    session: AsyncSession,
+    tenant_id: UUID,
+    time_window_minutes: int = 5,
+) -> Dict[str, Any]:
+    """
+    Collect tenant-specific performance metrics from audit logs.
+    
+    Args:
+        session: Database session
+        tenant_id: Tenant ID
+        time_window_minutes: Time window in minutes (default: 5)
+    
+    Returns:
+        Dictionary with performance metrics filtered by tenant_id
+    """
+    try:
+        # Calculate time window
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(minutes=time_window_minutes)
+        
+        # Query audit logs for the time window, filtered by tenant_id
+        query = (
+            select(AuditLog)
+            .where(
+                and_(
+                    AuditLog.timestamp >= start_time,
+                    AuditLog.timestamp <= end_time,
+                    AuditLog.tenant_id == tenant_id,
+                )
+            )
+            .order_by(AuditLog.timestamp.desc())
+        )
+        
+        result = await session.execute(query)
+        all_logs = result.scalars().all()
+        
+        # Filter for successful post-execution requests and extract response times
+        response_times = []
+        total_requests = 0
+        
+        for log in all_logs:
+            if (
+                log.details
+                and log.details.get("phase") == "post_execution"
+                and log.details.get("execution_success", False)
+            ):
+                total_requests += 1
+                if "response_time_ms" in log.details:
+                    response_times.append(log.details["response_time_ms"])
+        
+        # Calculate metrics
+        if response_times:
+            import numpy as np
+            average_response_time = sum(response_times) / len(response_times)
+            p95_response_time = float(np.percentile(response_times, 95))
+            p99_response_time = float(np.percentile(response_times, 99))
+        else:
+            average_response_time = 0.0
+            p95_response_time = 0.0
+            p99_response_time = 0.0
+        
+        # Calculate requests per second
+        time_window_seconds = time_window_minutes * 60
+        requests_per_second = (
+            total_requests / time_window_seconds if time_window_seconds > 0 else 0.0
+        )
+        
+        return {
+            "average_response_time_ms": round(average_response_time, 2),
+            "p95_response_time_ms": round(p95_response_time, 2),
+            "p99_response_time_ms": round(p99_response_time, 2),
+            "total_requests": total_requests,
+            "requests_per_second": round(requests_per_second, 2),
+        }
+    except Exception as e:
+        logger.error("Failed to collect tenant performance metrics", tenant_id=str(tenant_id), error=str(e))
+        return {
+            "average_response_time_ms": 0.0,
+            "p95_response_time_ms": 0.0,
+            "p99_response_time_ms": 0.0,
+            "total_requests": 0,
+            "requests_per_second": 0.0,
+        }
+
+
+async def _calculate_tenant_error_rates(
+    session: AsyncSession,
+    tenant_id: UUID,
+    time_window_minutes: int = 5,
+) -> Dict[str, Any]:
+    """
+    Calculate tenant-specific error rates from audit logs.
+    
+    Args:
+        session: Database session
+        tenant_id: Tenant ID
+        time_window_minutes: Time window in minutes (default: 5)
+    
+    Returns:
+        Dictionary with error rates filtered by tenant_id
+    """
+    try:
+        # Calculate time window
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(minutes=time_window_minutes)
+        
+        # Query audit logs for the time window, filtered by tenant_id
+        query = (
+            select(AuditLog)
+            .where(
+                and_(
+                    AuditLog.timestamp >= start_time,
+                    AuditLog.timestamp <= end_time,
+                    AuditLog.tenant_id == tenant_id,
+                )
+            )
+        )
+        
+        result = await session.execute(query)
+        all_logs = result.scalars().all()
+        
+        # Filter for post-execution logs only
+        logs = [
+            log
+            for log in all_logs
+            if log.details and log.details.get("phase") == "post_execution"
+        ]
+        
+        total_requests = len(logs)
+        successful_requests = 0
+        failed_requests = 0
+        errors_by_type = Counter()
+        
+        for log in logs:
+            if log.details.get("execution_success", False):
+                successful_requests += 1
+            else:
+                failed_requests += 1
+                # Extract error type from details
+                error_type = log.details.get("error_type", "unknown")
+                errors_by_type[error_type] += 1
+        
+        error_rate_percent = (
+            (failed_requests / total_requests * 100) if total_requests > 0 else 0.0
+        )
+        
+        return {
+            "total_requests": total_requests,
+            "successful_requests": successful_requests,
+            "failed_requests": failed_requests,
+            "error_rate_percent": round(error_rate_percent, 2),
+            "errors_by_type": dict(errors_by_type),
+        }
+    except Exception as e:
+        logger.error("Failed to calculate tenant error rates", tenant_id=str(tenant_id), error=str(e))
+        return {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "error_rate_percent": 0.0,
+            "errors_by_type": {},
+        }
+
+
+def _generate_tenant_health_summary_and_recommendations(
+    component_status: Dict[str, Any],
+    performance_metrics: Dict[str, Any],
+    error_rates: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Generate tenant health summary and recommendations.
+    
+    Args:
+        component_status: Tenant-specific component health status
+        performance_metrics: Tenant-specific performance metrics
+        error_rates: Tenant-specific error rates
+    
+    Returns:
+        Dictionary with summary and recommendations
+    """
+    degraded_components = []
+    unhealthy_components = []
+    
+    # Identify degraded and unhealthy components
+    for component_name, component_status_info in component_status.items():
+        if not component_status_info.get("status", False):
+            unhealthy_components.append(component_name)
+        elif "degraded" in component_status_info.get("message", "").lower():
+            degraded_components.append(component_name)
+    
+    # Determine overall status
+    if unhealthy_components:
+        overall_status = "unhealthy"
+    elif degraded_components:
+        overall_status = "degraded"
+    else:
+        overall_status = "healthy"
+    
+    recommendations = []
+    
+    # Check performance metrics
+    p95_response_time = performance_metrics.get("p95_response_time_ms", 0.0)
+    if p95_response_time > 1000:  # > 1 second
+        if overall_status == "healthy":
+            overall_status = "degraded"
+        recommendations.append(
+            f"High p95 response time ({p95_response_time}ms). Consider optimizing queries or scaling resources.",
+        )
+    
+    # Check error rates
+    error_rate = error_rates.get("error_rate_percent", 0.0)
+    if error_rate > 5.0:  # > 5% error rate
+        if overall_status == "healthy":
+            overall_status = "degraded"
+        recommendations.append(
+            f"High error rate ({error_rate}%). Investigate error patterns and system stability.",
+        )
+    elif error_rate > 1.0:  # > 1% error rate
+        recommendations.append(
+            f"Elevated error rate ({error_rate}%). Monitor closely for degradation.",
+        )
+    
+    # Add component-specific recommendations
+    if unhealthy_components:
+        recommendations.append(
+            f"Critical: {', '.join(unhealthy_components)} are unhealthy. Immediate attention required.",
+        )
+    if degraded_components:
+        recommendations.append(
+            f"Warning: {', '.join(degraded_components)} are degraded. Monitor and investigate.",
+        )
+    
+    # Generate summary
+    if overall_status == "healthy":
+        summary = "Tenant operations are healthy. No issues detected."
+    elif overall_status == "degraded":
+        summary = f"Tenant is experiencing degraded performance. {len(degraded_components)} component(s) experiencing issues."
+    else:
+        summary = f"Tenant is unhealthy. {len(unhealthy_components)} critical component(s) are down."
+    
+    if not recommendations:
+        recommendations = ["No immediate action required. Tenant is operating normally."]
+    
+    return {
+        "overall_status": overall_status,
+        "summary": summary,
+        "degraded_components": degraded_components,
+        "unhealthy_components": unhealthy_components,
+        "recommendations": recommendations,
+    }
+
+
+@mcp_server.tool()
+async def rag_get_tenant_health(tenant_id: str) -> Dict[str, Any]:
+    """
+    Retrieve tenant-specific health status.
+    
+    Aggregates health from tenant-specific components (FAISS index, MinIO bucket, Meilisearch index),
+    collects tenant-specific usage and performance metrics, calculates error rates, and provides
+    health summary and recommendations.
+    
+    Results are cached for 30 seconds for performance (health checks should be near real-time).
+    
+    Args:
+        tenant_id: Tenant UUID (string format)
+    
+    Returns:
+        Dictionary containing tenant health:
+        {
+            "tenant_id": str,
+            "tenant_status": "healthy" | "degraded" | "unhealthy",
+            "component_status": {
+                "faiss": {"status": bool, "message": str},
+                "minio": {"status": bool, "message": str},
+                "meilisearch": {"status": bool, "message": str},
+            },
+            "usage_metrics": {
+                "total_documents": int,
+                "total_searches": int,
+                "total_memory_operations": int,
+                "storage_usage_bytes": int,
+            },
+            "performance_metrics": {
+                "average_response_time_ms": float,
+                "p95_response_time_ms": float,
+                "p99_response_time_ms": float,
+                "total_requests": int,
+                "requests_per_second": float,
+            },
+            "error_rates": {
+                "total_requests": int,
+                "successful_requests": int,
+                "failed_requests": int,
+                "error_rate_percent": float,
+                "errors_by_type": Dict[str, int],
+            },
+            "health_summary": {
+                "overall_status": str,
+                "summary": str,
+                "degraded_components": List[str],
+                "unhealthy_components": List[str],
+                "recommendations": List[str],
+            },
+            "cached": bool,
+            "timestamp": str,
+        }
+    
+    Raises:
+        AuthorizationError: If user doesn't have permission (Uber Admin or Tenant Admin only)
+        ValidationError: If tenant_id is invalid
+    """
+    # Check permissions (Uber Admin or Tenant Admin)
+    current_role = get_role_from_context()
+    if not current_role:
+        raise AuthorizationError("Role not found in context.")
+    
+    try:
+        check_tool_permission(current_role, "rag_get_tenant_health")
+    except AuthorizationError as e:
+        raise AuthorizationError(f"Access denied: {str(e)}")
+    
+    # Validate tenant_id
+    try:
+        tenant_uuid = UUID(tenant_id)
+    except ValueError:
+        raise ValidationError(f"Invalid tenant_id format: {tenant_id}", field="tenant_id")
+    
+    # For Tenant Admin, ensure they can only access their own tenant
+    context_tenant_id = get_tenant_id_from_context()
+    if current_role == UserRole.TENANT_ADMIN and context_tenant_id != tenant_uuid:
+        raise AuthorizationError(
+            f"Tenant Admin can only access their own tenant. Requested: {tenant_id}, Context: {context_tenant_id}"
+        )
+    
+    # Check cache (30 second TTL for near real-time health checks)
+    cache_key = f"tenant_health:{tenant_id}"
+    cached_health = await _get_cached_stats(cache_key)
+    if cached_health:
+        logger.debug("Tenant health retrieved from cache", tenant_id=tenant_id)
+        return {
+            **cached_health,
+            "cached": True,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    
+    logger.info("Collecting tenant health status", tenant_id=tenant_id)
+    
+    # Check tenant-specific components in parallel
+    faiss_health, minio_health, meilisearch_health = await asyncio.gather(
+        _check_tenant_faiss_health(tenant_uuid),
+        _check_tenant_minio_health(tenant_uuid),
+        _check_tenant_meilisearch_health(tenant_uuid),
+        return_exceptions=True,
+    )
+    
+    component_status = {
+        "faiss": faiss_health if not isinstance(faiss_health, Exception) else {"status": False, "message": str(faiss_health)},
+        "minio": minio_health if not isinstance(minio_health, Exception) else {"status": False, "message": str(minio_health)},
+        "meilisearch": meilisearch_health if not isinstance(meilisearch_health, Exception) else {"status": False, "message": str(meilisearch_health)},
+    }
+    
+    # Collect tenant-specific usage metrics
+    usage_metrics = {
+        "total_documents": 0,
+        "total_searches": 0,
+        "total_memory_operations": 0,
+        "storage_usage_bytes": 0,
+    }
+    
+    try:
+        # Get document count
+        async for session in get_db_session():
+            try:
+                doc_count_query = select(func.count(Document.id)).where(Document.tenant_id == tenant_uuid)
+                doc_count_result = await session.execute(doc_count_query)
+                usage_metrics["total_documents"] = doc_count_result.scalar() or 0
+            except Exception as e:
+                logger.warning("Failed to get document count", tenant_id=tenant_id, error=str(e))
+            finally:
+                await session.close()
+            break
+        
+        # Get storage usage
+        usage_metrics["storage_usage_bytes"] = await _calculate_storage_usage(tenant_uuid)
+        
+        # Get search and memory operation counts from audit logs (last 24 hours)
+        async for session in get_db_session():
+            try:
+                end_time = datetime.utcnow()
+                start_time = end_time - timedelta(hours=24)
+                
+                # Count searches
+                search_query = (
+                    select(func.count(AuditLog.id))
+                    .where(
+                        and_(
+                            AuditLog.timestamp >= start_time,
+                            AuditLog.timestamp <= end_time,
+                            AuditLog.tenant_id == tenant_uuid,
+                            AuditLog.action == "rag_search",
+                        )
+                    )
+                )
+                search_result = await session.execute(search_query)
+                usage_metrics["total_searches"] = search_result.scalar() or 0
+                
+                # Count memory operations
+                memory_query = (
+                    select(func.count(AuditLog.id))
+                    .where(
+                        and_(
+                            AuditLog.timestamp >= start_time,
+                            AuditLog.timestamp <= end_time,
+                            AuditLog.tenant_id == tenant_uuid,
+                            AuditLog.action.in_(["rag_get_user_memory", "rag_update_memory"]),
+                        )
+                    )
+                )
+                memory_result = await session.execute(memory_query)
+                usage_metrics["total_memory_operations"] = memory_result.scalar() or 0
+            except Exception as e:
+                logger.warning("Failed to get usage metrics", tenant_id=tenant_id, error=str(e))
+            finally:
+                await session.close()
+            break
+    except Exception as e:
+        logger.warning("Failed to collect usage metrics", tenant_id=tenant_id, error=str(e))
+    
+    # Collect tenant-specific performance metrics and error rates from audit logs
+    async for session in get_db_session():
+        try:
+            performance_metrics = await _collect_tenant_performance_metrics(session, tenant_uuid, time_window_minutes=5)
+            error_rates = await _calculate_tenant_error_rates(session, tenant_uuid, time_window_minutes=5)
+            
+            # Generate health summary and recommendations
+            health_summary = _generate_tenant_health_summary_and_recommendations(
+                component_status,
+                performance_metrics,
+                error_rates,
+            )
+            
+            # Prepare response
+            result = {
+                "tenant_id": tenant_id,
+                "tenant_status": health_summary["overall_status"],
+                "component_status": component_status,
+                "usage_metrics": usage_metrics,
+                "performance_metrics": performance_metrics,
+                "error_rates": error_rates,
+                "health_summary": health_summary,
+                "cached": False,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            
+            # Cache the result (30 second TTL - use shorter TTL for health checks)
+            try:
+                redis_client = await get_redis_client()
+                await redis_client.setex(
+                    cache_key,
+                    30,  # 30 seconds for near real-time health checks
+                    json.dumps(result),
+                )
+            except Exception as e:
+                logger.warning("Failed to cache tenant health", tenant_id=tenant_id, error=str(e))
+            
+            logger.info(
+                "Tenant health collected",
+                tenant_id=tenant_id,
+                tenant_status=health_summary["overall_status"],
                 unhealthy_components=len(health_summary["unhealthy_components"]),
                 degraded_components=len(health_summary["degraded_components"]),
             )

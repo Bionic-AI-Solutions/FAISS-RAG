@@ -141,3 +141,4 @@ The integration tests cover:
 - Containerized environment detection ensures tests work in both host and container environments
 - FAISS manager now supports tenant-specific embedding dimensions dynamically
 
+

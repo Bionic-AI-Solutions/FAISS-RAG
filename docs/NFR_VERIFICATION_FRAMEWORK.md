@@ -191,3 +191,4 @@ This document defines the systematic approach to verify that all subsystems meet
 - p95 latency >200ms (search), >100ms (memory)
 - Error rate >1%
 - Cache hit rate <80% (memories), <60% (search)
+

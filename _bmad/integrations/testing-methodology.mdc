@@ -1,0 +1,163 @@
+---
+description: Testing Methodology - Core Testing Procedures (MANDATORY)
+globs:
+alwaysApply: true
+---
+
+# Testing Methodology - Core Testing Procedures
+
+**Status:** MANDATORY REQUIREMENT  
+**Applies To:** All agents (Dev, Test Team, TEA, PM)
+
+This Cursor rule file aggregates all core testing methodology procedures from BMM test architecture. These procedures define the fundamental testing requirements and responsibilities for all BMAD projects.
+
+## Procedures Location
+
+All testing methodology procedures are located in: `_bmad/bmm/testarch/procedures/`
+
+**This is the correct architectural location** - testing procedures are core development methodology (BMM), not external system integrations.
+
+## Core Testing Procedures
+
+### 1. Testing Strategy
+**Location:** `_bmad/bmm/testarch/procedures/testing-strategy.md`
+
+**CRITICAL RULE:** Every story MUST have both unit tests AND integration tests.
+
+**Key Requirements:**
+- Unit tests: `tests/unit/test_<component>.py` - Test logic with mocks
+- Integration tests: `tests/integration/test_<component>_integration.py` - Test with real services
+- Both test suites must pass before marking task "In testing" (79)
+
+**Reference:** See full procedure for complete requirements, patterns, and agent responsibilities.
+
+### 2. QA Workflow
+**Location:** `_bmad/bmm/testarch/procedures/qa-workflow.md`
+
+**Complete workflow for task/story validation, bug management, and closure.**
+
+**Key Requirements:**
+- Task validation requires both unit and integration tests
+- Story validation requires both unit and integration tests
+- Bug fixes require both unit and integration tests
+- Story closure requires all tasks closed, all bugs closed, and validation passed
+
+**Reference:** See full procedure for complete workflow, status flows, and role responsibilities.
+
+### 3. System Readiness
+**Location:** `_bmad/bmm/testarch/procedures/system-readiness.md`
+
+**Responsibility for ensuring dependency systems are running before integration tests.**
+
+**Key Requirements:**
+- **PRIMARY:** Test Team / TEA Agent responsible for system readiness before validation
+- **SECONDARY:** Dev Agent responsible when running integration tests during development
+- Never run integration tests with services down and claim tests pass
+- Use project scripts for service management
+
+**Reference:** See full procedure for complete checklist, service startup procedures, and failure scenarios.
+
+### 4. Test Data Responsibility
+**Location:** `_bmad/bmm/testarch/procedures/test-data-responsibility.md`
+
+**Responsibility for creating test data and fixtures.**
+
+**Key Requirements:**
+- **Mock Fixtures (Unit Tests):** Dev Agent creates during TDD
+- **Real Test Data (Integration Tests):** Dev Agent creates, Test Team validates
+- **Shared Fixtures:** TEA Agent / Test Team creates during framework setup
+- **Integration Test Patterns:** Test Team / TEA creates during Epic grooming
+- **Data Factories:** TEA (framework), Dev (story-specific)
+
+**Reference:** See full procedure for complete responsibility matrix and workflow integration.
+
+### 5. Browser Testing
+**Location:** `_bmad/bmm/testarch/procedures/browser-testing.md`
+
+**Mandatory browser-based integration testing procedure for UI development.**
+
+**Key Requirements:**
+- All frontend UI development must include browser testing
+- Pre-testing checklist: Backend services, frontend server, test data
+- Complete user journey testing required
+- Cross-browser and responsive design testing
+- Documentation required for each testing session
+
+**Reference:** See full procedure for complete testing checklist, tools, and escalation process.
+
+## Quick Reference
+
+### For Dev Agent
+1. Write unit tests (with mocks) + integration tests (with real services)
+2. Create mock fixtures for unit tests
+3. Create real test data fixtures for integration tests
+4. Verify services running before integration tests
+5. Run both test suites before marking task "In testing" (79)
+
+### For Test Team / TEA Agent
+1. Verify services running before validation (PRIMARY responsibility)
+2. Run unit test suite (with mocks) + integration test suite (with real services)
+3. Create shared fixtures during framework setup
+4. Create integration test patterns during Epic grooming
+5. Validate test data quality during validation
+
+### For QA / UX Teams
+1. Conduct browser testing for all UI development
+2. Verify backend services running before browser testing
+3. Test complete user journeys
+4. Document test results and issues
+5. Sign off on demo readiness
+
+## Integration with Other Procedures
+
+### Testing Strategy Integration
+- **Reference:** `_bmad/bmm/testarch/procedures/testing-strategy.md`
+- Defines unit + integration test requirements
+- All other procedures reference this as the foundation
+
+### QA Workflow Integration
+- **Reference:** `_bmad/bmm/testarch/procedures/qa-workflow.md`
+- Defines complete validation workflow
+- Integrates with testing strategy and system readiness
+
+### System Readiness Integration
+- **Reference:** `_bmad/bmm/testarch/procedures/system-readiness.md`
+- Defines responsibility for service management
+- Required before running integration tests
+
+### Test Data Integration
+- **Reference:** `_bmad/bmm/testarch/procedures/test-data-responsibility.md`
+- Defines responsibility for test data creation
+- Required for both unit and integration tests
+
+### Browser Testing Integration
+- **Reference:** `_bmad/bmm/testarch/procedures/browser-testing.md`
+- Defines UI testing requirements
+- Integrates with system readiness (backend services)
+
+## Architecture Note
+
+**Why procedures are in BMM, not integrations:**
+
+- **BMM** (`_bmad/bmm/`) = Development methodology, project-specific processes
+- **Integrations** (`_bmad/integrations/`) = External system integrations (OpenProject, Archon)
+
+Testing procedures are **core development methodology**, not external system integrations. They belong in BMM test architecture (`_bmad/bmm/testarch/procedures/`).
+
+This Cursor rule file (`testing-methodology.mdc`) serves as an aggregator that references the procedures in their correct location, ensuring they are loaded automatically via `alwaysApply: true`.
+
+## References
+
+- **Testing Strategy:** `_bmad/bmm/testarch/procedures/testing-strategy.md`
+- **QA Workflow:** `_bmad/bmm/testarch/procedures/qa-workflow.md`
+- **System Readiness:** `_bmad/bmm/testarch/procedures/system-readiness.md`
+- **Test Data Responsibility:** `_bmad/bmm/testarch/procedures/test-data-responsibility.md`
+- **Browser Testing:** `_bmad/bmm/testarch/procedures/browser-testing.md`
+- **Browser Testing Checklist Template:** `_bmad/bmm/testarch/procedures/templates/browser-testing-checklist.md`
+
+---
+
+**Document Version:** 1.0  
+**Last Updated:** 2026-01-08  
+**Owner:** Test Team / TEA Agent  
+**Review Frequency:** Quarterly

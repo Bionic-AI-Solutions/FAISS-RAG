@@ -94,7 +94,7 @@ TOOL_PERMISSIONS: dict[str, Set[UserRole]] = {
     "rag_get_search_analytics": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
     "rag_get_memory_analytics": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
     "rag_get_system_health": {UserRole.UBER_ADMIN},  # Uber Admin only - system-wide health monitoring
-    "rag_get_tenant_health": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},  # Phase 2
+    "rag_get_tenant_health": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
     
     # Backup tools - Uber Admin and Tenant Admin only
     "rag_backup_tenant_data": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
@@ -105,6 +105,11 @@ TOOL_PERMISSIONS: dict[str, Set[UserRole]] = {
     # Data export tools - Uber Admin and Tenant Admin only
     "rag_export_tenant_data": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},  # Phase 2
     "rag_export_user_data": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},  # Phase 2
+    
+    # Tenant management tools - Epic 9
+    "rag_delete_tenant": {UserRole.UBER_ADMIN},  # Uber Admin only - destructive operation
+    "rag_update_subscription_tier": {UserRole.UBER_ADMIN},  # Uber Admin only
+    "rag_get_subscription_tier": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},  # Uber Admin and Tenant Admin
 }
 
 

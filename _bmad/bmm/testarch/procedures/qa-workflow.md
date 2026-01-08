@@ -1,8 +1,3 @@
----
-description: QA Testing & Story Closure Workflow (MANDATORY)
-globs:
-alwaysApply: true
----
 
 # QA Testing & Story Closure Workflow
 
@@ -279,6 +274,6 @@ Closed (82) [Test validates] OR Test failed (81) [Iterate]
 
 ## References
 
-- **Testing Strategy:** `_bmad/integrations/testing-strategy.mdc`
+- **Testing Strategy:** `_bmad/bmm/testarch/procedures/testing-strategy.md`
 - **Story Verification:** `_bmad/workflows/STORY_VERIFICATION_STANDARD.md`
 - **OpenProject Integration:** `_bmad/integrations/openproject/workflow.md`

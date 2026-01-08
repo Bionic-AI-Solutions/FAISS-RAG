@@ -44,7 +44,7 @@ This rule file provides standard integration behaviors for all BMAD agents.
 - **Unit Tests:** `tests/unit/test_<component>.py` - Test logic with mocks
 - **Integration Tests:** `tests/integration/test_<component>_integration.py` - Test with real services
 
-**Reference:** `_bmad/integrations/testing-strategy.mdc` for complete testing requirements
+**Reference:** `_bmad/bmm/testarch/procedures/testing-strategy.md` for complete testing requirements
 
 ## QA Workflow (MANDATORY)
 
@@ -54,7 +54,20 @@ This rule file provides standard integration behaviors for all BMAD agents.
 - Story validation requires both unit and integration tests
 - Bug fixes require both unit and integration tests
 
-**Reference:** `_bmad/integrations/qa-workflow.mdc` for complete QA workflow
+**Reference:** `_bmad/bmm/testarch/procedures/qa-workflow.md` for complete QA workflow
+
+## Testing Methodology (MANDATORY)
+
+**All core testing procedures are located in:** `_bmad/bmm/testarch/procedures/`
+
+**Aggregator:** `_bmad/integrations/testing-methodology.mdc` provides quick reference and links to all testing procedures.
+
+**Procedures:**
+- Testing Strategy: `_bmad/bmm/testarch/procedures/testing-strategy.md`
+- QA Workflow: `_bmad/bmm/testarch/procedures/qa-workflow.md`
+- System Readiness: `_bmad/bmm/testarch/procedures/system-readiness.md`
+- Test Data Responsibility: `_bmad/bmm/testarch/procedures/test-data-responsibility.md`
+- Browser Testing: `_bmad/bmm/testarch/procedures/browser-testing.md`
 
 ## Integration Configuration
 

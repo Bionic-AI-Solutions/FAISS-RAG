@@ -3,13 +3,18 @@
 **Document Type**: User Journey Maps  
 **Date**: 2026-01-04  
 **Author**: Sally (UX Designer)  
-**Status**: Draft for Review
+**Status**: Enhanced with Visual Mockups  
+**Last Updated**: 2026-01-08
 
 ---
 
 ## Overview
 
 This document provides detailed user journey maps for the three primary admin personas of the FAISS-RAG System Admin UI. Each journey map visualizes the user's experience, emotions, touchpoints, and pain points throughout their interaction with the system.
+
+**Visual Mockups**: This document has been enhanced with high-fidelity UI mockups generated using the genImage MCP server. Each key touchpoint in the journeys now includes visual representations to help stakeholders understand the user experience.
+
+**Mockup Location**: All visual mockups are stored in `_bmad-output/planning-artifacts/journey-mockups/` organized by persona journey.
 
 ---
 
@@ -39,6 +44,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │ Action: Views platform health, sees new tenant request           │  │
 │  │ Emotion: 😊 Focused - ready to work                              │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Platform Dashboard](journey-mockups/alex-journey/01-platform-dashboard.png) │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  STAGE 2: Navigate to Tenant Management                                │
@@ -52,6 +60,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │ Action: Views list of all tenants, sees "Create New Tenant" btn │  │
 │  │ Emotion: 😊 Ready - knows what to do                             │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Tenant List](journey-mockups/alex-journey/02-tenant-list.png) │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  STAGE 3: Create New Tenant (Multi-Step Wizard)                        │
@@ -66,6 +77,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │   - Contact Phone: +1-555-0123                                  │  │
 │  │ Emotion: 😊 Efficient - form is clear and simple                │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Tenant Wizard Step 1](journey-mockups/alex-journey/03-tenant-wizard-step1.png) │  │
 │  │                                                                  │  │
 │  │ STEP 2: Template Selection                                      │  │
 │  │ Touchpoint: Tenant Creation Wizard - Step 2                      │  │
@@ -115,6 +129,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │ Emotion: 😊 Patient - progress is clear                         │  │
 │  │ Pain Point: None - progress feedback is helpful                  │  │
 │  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Tenant Progress](journey-mockups/alex-journey/04-tenant-progress.png) │  │
+│  │                                                                  │  │
 │  │ Touchpoint: Success Confirmation                                 │  │
 │  │ Action: Sees "Tenant Created Successfully" message              │  │
 │  │ Success Message Shows:                                          │  │
@@ -124,6 +141,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │   - Actions: "View Tenant" | "Switch to Tenant View"           │  │
 │  │ Emotion: 😊 Satisfied - completed in under 2 minutes            │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Tenant Success](journey-mockups/alex-journey/05-tenant-success.png) │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  STAGE 5: Verify Tenant Setup (Optional)                               │
@@ -190,6 +210,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │   - Quick Actions: Upload Document, View Analytics              │  │
 │  │ Emotion: 😊 Informed - knows current state                      │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Tenant Dashboard](journey-mockups/lisa-journey/01-tenant-dashboard.png) │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  STAGE 2: Navigate to Document Management                              │
@@ -209,6 +232,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │   - Pagination (50 per page)                                   │  │
 │  │ Emotion: 😊 Organized - can find what she needs                │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Document List](journey-mockups/lisa-journey/02-document-list.png) │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  STAGE 3: Upload New Documents                                         │
@@ -232,6 +258,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │ Emotion: 😊 Confident - interface is intuitive                 │  │
 │  │ Pain Point: None                                                 │  │
 │  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Upload Dialog](journey-mockups/lisa-journey/03-upload-dialog.png) │  │
+│  │                                                                  │  │
 │  │ Touchpoint: Upload Progress                                     │  │
 │  │ Action: Clicks "Upload", watches progress                      │  │
 │  │ Progress Shows:                                                 │  │
@@ -241,6 +270,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │   - Can minimize and continue working                          │  │
 │  │ Emotion: 😊 Patient - progress is clear                        │  │
 │  │ Pain Point: None - can work while files process                │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Upload Progress](journey-mockups/lisa-journey/05-upload-progress.png) │  │
 │  │                                                                  │  │
 │  │ Touchpoint: Upload Complete Notification                       │  │
 │  │ Action: Receives notification when all files are indexed       │  │
@@ -273,6 +305,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │   - Actions: Update, Delete, Download                          │  │
 │  │ Emotion: 😊 Informed - can see document details                │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Document Viewer](journey-mockups/lisa-journey/04-document-viewer.png) │  │
 │  │                                                                  │  │
 │  │ Touchpoint: Update Document Dialog                              │  │
 │  │ Action: Clicks "Update", uploads new version                    │  │
@@ -378,6 +413,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │ Navigation: Now shows tenant-specific navigation               │  │
 │  │ Emotion: 😊 Ready - can now investigate tenant-specific issues │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Context Switcher](journey-mockups/pat-journey/01-context-switcher.png) │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │  STAGE 3: Investigate Tenant Configuration                             │
@@ -400,6 +438,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │ Emotion: 😟 Identifies potential issue - model not optimized   │  │
 │  │ Pain Point: ⚠️ Generic model may not understand medical terms  │  │
 │  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Configuration Page](journey-mockups/pat-journey/02-configuration.png) │  │
+│  │                                                                  │  │
 │  │ Touchpoint: Document Management                                 │  │
 │  │ Action: Checks document ingestion history                      │  │
 │  │ Document List Shows:                                            │  │
@@ -421,6 +462,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │   - Error Rate: 3% (some queries failing)                      │  │
 │  │ Emotion: 😟 Confirmed - multiple issues identified              │  │
 │  │ Pain Point: ⚠️ Need to prioritize fixes                        │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Analytics Dashboard](journey-mockups/pat-journey/03-analytics.png) │  │
 │  │                                                                  │  │
 │  │ Touchpoint: Audit Logs (Optional)                               │  │
 │  │ Action: Reviews recent configuration changes                    │  │
@@ -468,6 +512,9 @@ This document provides detailed user journey maps for the three primary admin pe
 │  │   - Response time: 180ms (within target)                        │  │
 │  │ Emotion: 😊 Satisfied - fix is working                          │  │
 │  │ Pain Point: None                                                 │  │
+│  │                                                                  │  │
+│  │ 📸 **Visual Mockup**:                                          │  │
+│  │ ![Test Search Results](journey-mockups/pat-journey/04-test-search.png) │  │
 │  │                                                                  │  │
 │  │ Touchpoint: Analytics Dashboard                                 │  │
 │  │ Action: Monitors search analytics over next hour                │  │
@@ -530,7 +577,35 @@ This document provides detailed user journey maps for the three primary admin pe
 
 ---
 
-**Next Steps**: Create wireframes based on these journey maps.
+**Next Steps**: Implementation epics and stories based on these journey maps and visual mockups.
+
+---
+
+## Visual Mockup Gallery
+
+All visual mockups have been generated using the genImage MCP server (tenant_id="fedfina") and are organized by journey:
+
+### Alex Chen - Uber Admin Journey (5 mockups)
+1. **Platform Dashboard** - `journey-mockups/alex-journey/01-platform-dashboard.png`
+2. **Tenant List Page** - `journey-mockups/alex-journey/02-tenant-list.png`
+3. **Tenant Creation Wizard Step 1** - `journey-mockups/alex-journey/03-tenant-wizard-step1.png`
+4. **Tenant Creation Progress** - `journey-mockups/alex-journey/04-tenant-progress.png`
+5. **Tenant Success Confirmation** - `journey-mockups/alex-journey/05-tenant-success.png`
+
+### Lisa Thompson - Tenant Admin Journey (5 mockups)
+1. **Tenant Dashboard** - `journey-mockups/lisa-journey/01-tenant-dashboard.png`
+2. **Document List Page** - `journey-mockups/lisa-journey/02-document-list.png`
+3. **Upload Dialog** - `journey-mockups/lisa-journey/03-upload-dialog.png`
+4. **Document Viewer** - `journey-mockups/lisa-journey/04-document-viewer.png`
+5. **Upload Progress** - `journey-mockups/lisa-journey/05-upload-progress.png`
+
+### Pat Williams - Support Troubleshooter Journey (4 mockups)
+1. **Context Switcher** - `journey-mockups/pat-journey/01-context-switcher.png`
+2. **Configuration Page** - `journey-mockups/pat-journey/02-configuration.png`
+3. **Analytics Dashboard** - `journey-mockups/pat-journey/03-analytics.png`
+4. **Test Search Results** - `journey-mockups/pat-journey/04-test-search.png`
+
+**Total**: 14 high-fidelity UI mockups covering all key touchpoints across the three user journeys.
 
 
 

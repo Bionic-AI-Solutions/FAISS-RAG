@@ -1,9 +1,3 @@
----
-description: Testing Strategy - Unit Tests + Integration Tests (MANDATORY)
-globs:
-alwaysApply: true
----
-
 # Testing Strategy: Unit Tests + Integration Tests
 
 **Status:** MANDATORY REQUIREMENT  
@@ -175,6 +169,15 @@ tests/
 
 ## References
 
-- **QA Workflow:** `_bmad/integrations/qa-workflow.mdc`
+- **QA Workflow:** `_bmad/bmm/testarch/procedures/qa-workflow.md`
+- **System Readiness:** `_bmad/bmm/testarch/procedures/system-readiness.md`
+- **Test Data Responsibility:** `_bmad/bmm/testarch/procedures/test-data-responsibility.md`
 - **Story Verification:** `_bmad/workflows/STORY_VERIFICATION_STANDARD.md`
 - **Integration Test Patterns Config:** `_bmad/_config/project-config.yaml` → `testing.integration_test_patterns`
+
+---
+
+**Document Version:** 1.0  
+**Last Updated:** 2026-01-08  
+**Owner:** Test Team / TEA Agent  
+**Review Frequency:** Quarterly

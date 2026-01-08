@@ -16,6 +16,7 @@ To replicate all BMAD rules, processes, and workflows in new projects, the follo
 **Purpose:** Source of truth for all agents, workflows, and integrations
 
 **Required Structure:**
+
 ```
 _bmad/
 ├── _config/
@@ -125,6 +126,7 @@ _bmad/
 ```
 
 **Critical Files:**
+
 - ✅ `_bmad/integrations/cursor-rules.mdc` - **MUST BE INCLUDED** (always-applied integration rules)
 - ✅ `_bmad/_config/project-config.yaml` - Template for user to customize
 - ✅ All agent `.md` files - Complete agent definitions
@@ -137,6 +139,7 @@ _bmad/
 **Purpose:** Lightweight activation files that tell Cursor to load full definitions from `_bmad/`
 
 **Required Structure:**
+
 ```
 .cursor/
 └── rules/
@@ -217,6 +220,7 @@ _bmad/
 ```
 
 **Critical Files:**
+
 - ✅ `.cursor/rules/bmad/index.mdc` - Master index (always applied)
 - ✅ All `.mdc` activation files - Pointers to `_bmad/` definitions
 - ✅ `epic-story-lifecycle.mdc` - Lifecycle management workflow
@@ -230,12 +234,14 @@ _bmad/
 **Purpose:** Scripts for initializing and managing BMAD in new projects
 
 **Required Files:**
+
 ```
 scripts/
 └── bmad-setup.py                         # ← BMAD setup and management script
 ```
 
 **Script Capabilities:**
+
 - Interactive project initialization
 - Generate CLAUDE.md from template
 - Validate configuration
@@ -249,6 +255,7 @@ scripts/
 **Purpose:** Key documentation explaining the BMAD system
 
 **Required Files:**
+
 ```
 docs/
 ├── BMAD_CURSOR_INTEGRATION_EXPLAINED.md  # ← How BMAD works with Cursor
@@ -257,6 +264,7 @@ docs/
 ```
 
 **Optional but Recommended:**
+
 - `BMAD_COMPLETE_WORKFLOW_REQUIREMENTS.md` - Detailed workflow requirements
 - `BMAD_WORKFLOW_QUICK_REFERENCE.md` - Quick reference guide
 - `WORKFLOW_TASK_CREATION_REQUIREMENT.md` - Task creation details
@@ -269,6 +277,7 @@ docs/
 **Purpose:** Template configuration file for new projects
 
 **Required File:**
+
 ```
 _bmad/_config/project-config.yaml.template
 ```
@@ -282,6 +291,7 @@ _bmad/_config/project-config.yaml.template
 **Purpose:** Update virgin-devcontainer README with BMAD information
 
 **Required Updates to `README.md`:**
+
 - Add BMAD methodology section
 - Document the two-tier architecture (`.cursor/rules/bmad/` + `_bmad/`)
 - Explain how to initialize BMAD in a new project
@@ -331,6 +341,7 @@ python scripts/bmad-setup.py init
 ```
 
 This will:
+
 - Prompt for project name, OpenProject project ID, etc.
 - Generate `_bmad/_config/project-config.yaml` with your settings
 - Validate configuration
@@ -338,6 +349,7 @@ This will:
 ### Step 3: Configure MCP Servers
 
 Ensure your `~/.cursor/mcp.json` includes:
+
 - OpenProject MCP server (for work management)
 - Archon MCP server (for knowledge repository)
 
@@ -383,11 +395,13 @@ After checking in all files, verify:
 ### Template vs. Project-Specific
 
 **Template Files (Include in virgin-devcontainer):**
+
 - `_bmad/_config/project-config.yaml` - Template with placeholders
 - All agent/workflow definitions - Generic, reusable
 - Integration rules - Standard operating procedures
 
 **Project-Specific Files (User Creates):**
+
 - `_bmad/_config/project-config.yaml` - User customizes for their project
 - `_bmad-output/` - Generated artifacts
 - Project documentation in `docs/`
@@ -413,6 +427,3 @@ The template should be **generic and reusable**, with users customizing `project
 - [BMAD Cursor Integration Explained](./BMAD_CURSOR_INTEGRATION_EXPLAINED.md)
 - [BMAD Doctrine Integration Summary](./BMAD_DOCTRINE_INTEGRATION_SUMMARY.md)
 - [Virgin DevContainer Repository](https://github.com/Bionic-AI-Solutions/virgin-devcontainer)
-
-
-

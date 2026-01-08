@@ -1,0 +1,14 @@
+{
+  "tenant_id": "fedfina",
+  "gemini_api_key": "AIzaSyCGAl243t6QZ0NeugPOBIOYTzOYRw9cU6k",
+  "server_url": "https://mcp.baisoln.com/nano-banana/mcp",
+  "config": {
+    "default_style": "photorealistic",
+    "max_image_size": "2048x2048",
+    "quality": "high"
+  },
+  "registered_at": "2026-01-04",
+  "status": "active",
+  "notes": "Primary tenant for nano MCP server image generation operations"
+}
+

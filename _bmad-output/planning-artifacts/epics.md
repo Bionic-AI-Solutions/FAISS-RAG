@@ -4,13 +4,19 @@ inputDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/architecture.md
   - _bmad-output/planning-artifacts/product-brief-new-rag-2026-01-03.md
+  - _bmad-output/planning-artifacts/admin-ui-design-specification.md
+  - _bmad-output/planning-artifacts/admin-ui-complete-ux-design.md
+  - _bmad-output/planning-artifacts/admin-ui-user-journey-maps.md
 requirementsExtracted:
   functionalRequirements: 70
   nonFunctionalRequirements: 64
   additionalRequirements: 16
 epicsDesigned: true
-totalEpics: 9
+totalEpics: 12
 epicsApproved: true
+adminUIEpicsAdded: true
+adminUIEpics: [10, 11, 12]
+adminUIStories: 18
 ---
 
 # mem0-rag - Epic Breakdown
@@ -1717,3 +1723,856 @@ So that **tenants can delegate project-level management**.
 **Then** Access is limited to resources within assigned projects
 **And** Cross-project access is prevented
 **And** Project assignments are stored and validated
+
+---
+
+## Admin UI Epics
+
+### Epic 10: Admin UI Foundation & Authentication
+
+**Goal**: Establish the foundational infrastructure for the Admin UI, including authentication, RBAC integration, base layout components, and REST proxy backend that connects the frontend to existing MCP tools.
+
+**Business Value**: Enables secure, role-based access to the RAG platform administration interface, providing the foundation for all admin features.
+
+**Scope**: 
+- Frontend project setup (React/Next.js with TypeScript)
+- REST proxy backend (FastAPI) for MCP tool integration
+- OAuth 2.0 authentication integration
+- RBAC middleware for role-based UI rendering
+- Base layout components (sidebar, header, breadcrumbs)
+- Session management and tenant context handling
+- Error handling and loading states
+
+**Success Criteria**:
+- Users can authenticate via OAuth 2.0
+- UI adapts based on user role (Uber Admin, Tenant Admin)
+- REST proxy successfully calls existing MCP tools
+- Base layout components are reusable and responsive
+- Session and tenant context are properly managed
+
+**Dependencies**: 
+- Epic 1 (Secure Platform Foundation) - Authentication and RBAC backend
+- Epic 2 (Tenant Onboarding) - Tenant management MCP tools
+
+**Design Documents**:
+- Admin UI Design Specification: `admin-ui-design-specification.md`
+- Admin UI Complete UX Design: `admin-ui-complete-ux-design.md`
+- User Journey Maps: `admin-ui-user-journey-maps.md`
+- Wireframes: `admin-ui-wireframes.md`
+
+**Technical Considerations**:
+- Frontend: React 18+ with Next.js 14+, TypeScript, Material-UI or Tailwind CSS
+- Backend: FastAPI REST proxy that translates HTTP requests to MCP tool calls
+- State Management: React Context for role and tenant context
+- Authentication: OAuth 2.0 with JWT tokens containing role claims
+- Integration: REST proxy must call existing MCP tools (rag_*, mem0_*) with proper tenant_id
+
+**Timeline**: Weeks 1-2 of MVP (8-week timeline)
+
+#### Story 10.1: Frontend Project Setup & Base Structure
+
+As a **Developer**,
+I want **to set up the frontend project structure with React/Next.js and TypeScript**,
+So that **I have a solid foundation for building the Admin UI**.
+
+**Acceptance Criteria:**
+
+**Given** I am starting Admin UI development
+**When** I set up the frontend project
+**Then** Project uses Next.js 14+ with App Router
+**And** TypeScript is configured with strict mode
+**And** Project structure includes: `app/`, `components/`, `lib/`, `types/`, `styles/`
+**And** Material-UI or Tailwind CSS is installed and configured
+**And** ESLint and Prettier are configured
+**And** Project follows the design system from `admin-ui-complete-ux-design.md`
+**And** Base layout structure is created (AppShell component)
+**And** Project is ready for component development
+
+**Given** Design system integration is required
+**When** I set up the frontend project
+**Then** Color palette from design system is configured (Primary Blue: #1976D2, etc.)
+**And** Typography system is configured (Inter/Roboto fonts, size scale)
+**And** Spacing scale is configured (4px grid system)
+**And** Component library foundation is ready
+
+**Design References**:
+- Design System: `admin-ui-complete-ux-design.md` (Design System section)
+- Base Layout Wireframe: `admin-ui-wireframes.md` (Base Layout section)
+
+#### Story 10.2: REST Proxy Backend Setup & MCP Integration
+
+As a **Developer**,
+I want **to create a FastAPI REST proxy backend that integrates with existing MCP tools**,
+So that **the frontend can interact with the RAG platform through HTTP APIs**.
+
+**Acceptance Criteria:**
+
+**Given** I am setting up the REST proxy backend
+**When** I create the FastAPI application
+**Then** FastAPI project structure includes: `app/`, `api/`, `services/`, `models/`, `middleware/`
+**And** MCP client integration is implemented to call existing MCP tools
+**And** REST API endpoints are created for: authentication, tenant operations, document operations, search operations
+**And** Request/response models are defined using Pydantic
+**And** Error handling middleware is implemented
+**And** CORS is configured for frontend origin
+**And** API documentation is generated (OpenAPI/Swagger)
+
+**Given** MCP tool integration is required
+**When** I implement REST endpoints
+**Then** Endpoints translate HTTP requests to MCP tool calls
+**And** tenant_id is extracted from session/context and passed to MCP tools
+**And** Role validation is performed before MCP tool calls
+**And** MCP tool responses are transformed to REST API responses
+**And** Error responses from MCP tools are properly handled and returned
+
+**Given** Existing MCP tools must be integrated
+**When** I implement REST endpoints
+**Then** Tenant management endpoints call: `rag_register_tenant`, `rag_list_templates`, `rag_get_template`, `rag_configure_tenant_models`
+**And** Document management endpoints call: `rag_ingest`, `rag_list_documents`, `rag_get_document`, `rag_delete_document`
+**And** Search endpoints call: `rag_search` (when implemented)
+**And** Analytics endpoints call: `rag_get_usage_stats` (when implemented)
+**And** All endpoints properly handle tenant_id and role validation
+
+**Technical References**:
+- Architecture Document: `architecture.md` (MCP Server Layer section)
+- Existing MCP Tools: Epic 2, 3, 4 stories for tool specifications
+
+#### Story 10.3: OAuth 2.0 Authentication Integration
+
+As a **User**,
+I want **to authenticate using OAuth 2.0**,
+So that **I can securely access the Admin UI with my platform credentials**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing authentication
+**When** I integrate OAuth 2.0
+**Then** Frontend redirects to OAuth provider for authentication
+**Then** OAuth callback handles authentication response
+**And** JWT tokens are stored securely (httpOnly cookies or secure storage)
+**And** Token refresh mechanism is implemented
+**And** User role is extracted from token claims (uber_admin, tenant_admin, project_admin, end_user)
+**And** User session is established with role context
+**And** Unauthenticated users are redirected to login
+**And** Token expiration is handled gracefully
+
+**Given** Role-based access is required
+**When** I authenticate
+**Then** User role from token is stored in session context
+**And** UI adapts based on role (Uber Admin vs Tenant Admin navigation)
+**And** API requests include role information for backend validation
+**And** Unauthorized access attempts are blocked
+
+**Given** Backend integration is required
+**When** I implement authentication
+**Then** REST proxy validates JWT tokens
+**And** Token claims (role, tenant_id) are extracted and used for authorization
+**And** Invalid or expired tokens return 401 Unauthorized
+**And** Authentication middleware is integrated with MCP tool calls
+
+**Design References**:
+- Login Page: Journey maps show login as first touchpoint
+- Authentication Flow: `admin-ui-design-specification.md` (Authentication section)
+
+#### Story 10.4: RBAC Middleware & Role-Based UI Rendering
+
+As a **User**,
+I want **the UI to adapt based on my role**,
+So that **I only see features and data appropriate for my access level**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing RBAC
+**When** I create RBAC middleware
+**Then** Frontend has role context provider (React Context)
+**And** Navigation components check role before rendering menu items
+**And** Page components check role before rendering content
+**And** API calls include role information in headers
+**And** Backend validates role before processing requests
+**And** Unauthorized actions show appropriate error messages
+
+**Given** Role-based navigation is required
+**When** I implement navigation
+**Then** Uber Admin sees: Platform Dashboard, Tenant Management, Platform Analytics, Platform Settings, All Audit Logs
+**And** Tenant Admin sees: Tenant Dashboard, Document Management, Configuration, Analytics, User Management, Audit Logs
+**And** Navigation items are hidden/shown based on role
+**And** Role indicator is displayed in header (e.g., "Uber Admin" badge)
+
+**Given** Backend RBAC integration is required
+**When** I implement RBAC
+**Then** REST proxy validates role from JWT token
+**And** MCP tool calls include role validation
+**And** Role-based data filtering is applied (Uber Admin sees all tenants, Tenant Admin sees only their tenant)
+**And** Unauthorized API calls return 403 Forbidden
+
+**Design References**:
+- Navigation Structure: `admin-ui-complete-ux-design.md` (Information Architecture section)
+- Role Indicators: `admin-ui-complete-ux-design.md` (Design System - Role Indicators)
+
+#### Story 10.5: Base Layout Components (Sidebar, Header, Breadcrumbs)
+
+As a **User**,
+I want **consistent navigation and layout across all Admin UI pages**,
+So that **I can easily navigate and understand my current location**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing base layout
+**When** I create layout components
+**Then** AppShell component provides consistent page structure
+**And** Sidebar navigation component is created with role-based menu items
+**And** Header component shows: logo, user info, role indicator, tenant context switcher (Uber Admin), logout button
+**And** Breadcrumbs component shows current page hierarchy
+**And** Layout is responsive (mobile, tablet, desktop)
+**And** Layout follows design system spacing and typography
+
+**Given** Sidebar navigation is required
+**When** I implement sidebar
+**Then** Sidebar shows navigation items based on user role
+**And** Active navigation item is highlighted
+**And** Sidebar is collapsible on mobile
+**And** Navigation items have icons and labels
+**And** Navigation follows the structure from `admin-ui-complete-ux-design.md`
+
+**Given** Header component is required
+**When** I implement header
+**Then** Header shows platform logo and name
+**And** Header shows current user name and role
+**And** Header shows tenant context switcher for Uber Admin (when in platform view)
+**And** Header shows current tenant name when in tenant context
+**And** Header shows logout button
+**And** Header is sticky at top of page
+
+**Given** Breadcrumbs are required
+**When** I implement breadcrumbs
+**Then** Breadcrumbs show: Home > Section > Page
+**And** Breadcrumbs are clickable for navigation
+**And** Breadcrumbs adapt based on current route
+**And** Breadcrumbs follow design system styling
+
+**Design References**:
+- Base Layout Wireframe: `admin-ui-wireframes.md` (Base Layout section)
+- Navigation Structure: `admin-ui-complete-ux-design.md` (Information Architecture section)
+- Visual Mockups: `journey-mockups/alex-journey/01-platform-dashboard.png` (shows layout structure)
+
+#### Story 10.6: Session Management & Tenant Context Handling
+
+As a **Uber Admin**,
+I want **to switch between platform view and tenant-specific views**,
+So that **I can manage the platform and help individual tenants**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing session management
+**When** I create session context
+**Then** User session stores: user_id, role, tenant_id (for Tenant Admin), current_context (platform or tenant)
+**And** Session persists across page refreshes
+**And** Session is cleared on logout
+**And** Session timeout is handled gracefully
+
+**Given** Tenant context switching is required (Uber Admin)
+**When** I implement context switching
+**Then** Uber Admin can select a tenant from dropdown in header
+**And** UI switches to Tenant Admin view for selected tenant
+**And** Banner shows: "🔧 Uber Admin Mode - Viewing: [Tenant Name]"
+**And** Navigation changes to Tenant Admin navigation
+**And** All API calls use selected tenant_id
+**And** "Exit to Platform View" button returns to platform view
+**And** Context switch is persisted in session
+
+**Given** Tenant context is required
+**When** I implement tenant context
+**Then** Tenant Admin always has tenant_id from authentication
+**And** All API calls automatically include tenant_id
+**And** Tenant context is displayed in header
+**And** Cross-tenant access is prevented
+
+**Design References**:
+- Context Switcher: `journey-mockups/pat-journey/01-context-switcher.png`
+- Tenant Context Banner: `admin-ui-user-journey-maps.md` (Pat's Journey - Stage 2)
+
+#### Story 10.T: Admin UI Foundation Test Story
+
+As a **QA Engineer**,
+I want **to validate the Admin UI foundation**,
+So that **I can ensure authentication, RBAC, and base layout work correctly**.
+
+**Acceptance Criteria:**
+
+**Given** Admin UI foundation is implemented
+**When** I test the foundation
+**Then** OAuth 2.0 authentication works for all user roles
+**And** JWT tokens are properly validated
+**And** Role-based navigation renders correctly for each role
+**And** Base layout components are responsive and accessible
+**And** Session management works correctly
+**And** Tenant context switching works for Uber Admin
+**And** REST proxy successfully calls MCP tools
+**And** Error handling works for authentication failures
+**And** Error handling works for authorization failures
+**And** All components follow design system guidelines
+
+---
+
+### Epic 11: Tenant Admin Core Features
+
+**Goal**: Implement core features for Tenant Admin users, including tenant dashboard, document management, configuration, analytics, and user management, enabling tenants to fully manage their RAG knowledge base.
+
+**Business Value**: Empowers tenant administrators to independently manage their knowledge base, upload documents, configure settings, monitor usage, and manage users without requiring platform operator assistance.
+
+**Scope**:
+- Tenant Dashboard with overview metrics and quick actions
+- Document Management (upload, list, view, delete, version history)
+- Configuration (model settings, compliance profiles, rate limits)
+- Analytics & Reporting (usage stats, search analytics, memory analytics)
+- User Management (Project Admins, End Users, role assignments)
+
+**Success Criteria**:
+- Tenant Admin can view tenant dashboard with key metrics
+- Tenant Admin can upload and manage documents
+- Tenant Admin can configure tenant settings
+- Tenant Admin can view analytics and reports
+- Tenant Admin can manage users within tenant
+- All features integrate with existing MCP tools
+
+**Dependencies**: 
+- Epic 10 (Admin UI Foundation) - Base infrastructure
+- Epic 2 (Tenant Onboarding) - Tenant management MCP tools
+- Epic 3 (Knowledge Base Management) - Document MCP tools
+- Epic 4 (Search & Discovery) - Search MCP tools (for analytics)
+- Epic 5 (Memory & Personalization) - Memory MCP tools (for analytics)
+
+**Design Documents**:
+- User Journey: Lisa Thompson (Tenant Admin) - `admin-ui-user-journey-maps.md`
+- Visual Mockups: `journey-mockups/lisa-journey/` (5 mockups)
+- Wireframes: `admin-ui-wireframes.md` (Tenant Admin sections)
+
+**Technical Considerations**:
+- All features must call existing MCP tools via REST proxy
+- Document upload must support multi-modal (text, images, tables)
+- Configuration changes must update tenant_config via MCP tools
+- Analytics must aggregate data from multiple MCP tool responses
+- User management must integrate with RBAC system
+
+**Timeline**: Weeks 3-4 of MVP (8-week timeline)
+
+#### Story 11.1: Tenant Dashboard Implementation
+
+As a **Tenant Admin**,
+I want **to view my tenant dashboard with overview metrics and quick actions**,
+So that **I can quickly understand my tenant's health and take common actions**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing tenant dashboard
+**When** I create the dashboard page
+**Then** Dashboard shows: Health Status indicator (Healthy/Warning/Error)
+**And** Dashboard shows: Total Documents count
+**And** Dashboard shows: Recent Uploads count and list
+**And** Dashboard shows: Quick Actions (Upload Document, View Analytics)
+**And** Dashboard shows: Usage Statistics (searches, memory operations, storage)
+**And** Dashboard shows: Recent Activity feed
+**And** Dashboard data is fetched from MCP tools: `rag_get_usage_stats`, `rag_list_documents` (recent)
+**And** Dashboard is responsive and follows design system
+
+**Given** Health status is required
+**When** I implement health status
+**Then** Health status is determined from tenant health check (via MCP tool or REST endpoint)
+**And** Health status shows appropriate color indicator (green/yellow/red)
+**And** Health status includes brief status message
+**And** Health status links to detailed health page (if available)
+
+**Given** Quick actions are required
+**When** I implement quick actions
+**Then** "Upload Document" button navigates to document upload page
+**And** "View Analytics" button navigates to analytics page
+**And** Quick actions are prominently displayed
+**And** Quick actions are contextual based on tenant state
+
+**Design References**:
+- Tenant Dashboard Mockup: `journey-mockups/lisa-journey/01-tenant-dashboard.png`
+- Dashboard Wireframe: `admin-ui-wireframes.md` (Tenant Dashboard section)
+- User Journey: `admin-ui-user-journey-maps.md` (Lisa's Journey - Stage 1)
+
+#### Story 11.2: Document Management - Upload & List
+
+As a **Tenant Admin**,
+I want **to upload documents and view my document list**,
+So that **I can manage my knowledge base content**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing document upload
+**When** I create upload functionality
+**Then** Upload page has drag-and-drop zone
+**And** Upload page has "Browse Files" button
+**And** Upload supports multiple file selection
+**And** Upload shows file list with: name, size, type, validation status
+**And** Upload validates file types (PDF, DOCX, TXT, images, etc.)
+**And** Upload shows progress for each file (Uploading → Processing → Indexing → Complete)
+**And** Upload calls MCP tool: `rag_ingest` with document_content, document_metadata, tenant_id
+**And** Upload handles errors gracefully (file too large, invalid type, processing failure)
+**And** Upload can be minimized to continue working while files process
+
+**Given** I am implementing document list
+**When** I create document list page
+**Then** List shows table with columns: Name, Type, Date, Status, Actions
+**And** List has search bar at top
+**And** List has filter options (Type, Status, Date Range)
+**And** List has pagination (50 per page)
+**And** List calls MCP tool: `rag_list_documents` with tenant_id, filters, pagination
+**And** List shows document status (Indexed, Processing, Error)
+**And** List has actions: View, Update, Delete for each document
+**And** List is responsive and follows design system
+
+**Given** Document status is required
+**When** I implement status display
+**Then** Status shows: ✅ Indexed (green), ⏳ Processing (yellow), ❌ Error (red)
+**And** Status includes tooltip with details
+**And** Error status shows error message on hover/click
+
+**Design References**:
+- Document List Mockup: `journey-mockups/lisa-journey/02-document-list.png`
+- Upload Dialog Mockup: `journey-mockups/lisa-journey/03-upload-dialog.png`
+- Upload Progress Mockup: `journey-mockups/lisa-journey/05-upload-progress.png`
+- User Journey: `admin-ui-user-journey-maps.md` (Lisa's Journey - Stages 2, 3)
+
+#### Story 11.3: Document Management - Viewer & Actions
+
+As a **Tenant Admin**,
+I want **to view document details and perform actions (update, delete)**,
+So that **I can manage individual documents in my knowledge base**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing document viewer
+**When** I create document viewer page
+**Then** Viewer shows document preview (PDF viewer, image viewer, text viewer)
+**And** Viewer shows metadata panel: Name, Type, Size, Upload Date, Status
+**And** Viewer shows version history (v1.0, v0.9, v0.8, etc.)
+**And** Viewer has action buttons: Update, Delete, Download
+**And** Viewer calls MCP tool: `rag_get_document` with document_id, tenant_id
+**And** Viewer handles different document types appropriately
+**And** Viewer is responsive and follows design system
+
+**Given** I am implementing document update
+**When** I create update functionality
+**Then** Update button opens update dialog
+**And** Update dialog allows selecting new file
+**And** Update dialog has optional version notes field
+**And** Update calls MCP tool: `rag_ingest` with document_id (for versioning)
+**And** Update shows confirmation with new version number
+**And** Update preserves previous versions (version history)
+**And** Update shows progress (Processing → Indexing → Complete)
+
+**Given** I am implementing document deletion
+**When** I create delete functionality
+**Then** Delete button shows confirmation dialog
+**And** Delete confirmation shows document name and warning
+**And** Delete calls MCP tool: `rag_delete_document` with document_id, tenant_id
+**And** Delete shows success message
+**And** Delete removes document from list
+**And** Delete handles errors gracefully
+
+**Design References**:
+- Document Viewer Mockup: `journey-mockups/lisa-journey/04-document-viewer.png`
+- User Journey: `admin-ui-user-journey-maps.md` (Lisa's Journey - Stage 4)
+
+#### Story 11.4: Configuration Management
+
+As a **Tenant Admin**,
+I want **to configure my tenant settings (models, compliance, rate limits)**,
+So that **I can customize my RAG system for my domain and requirements**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing configuration page
+**When** I create configuration interface
+**Then** Configuration page has tabs/sections: Model Settings, Compliance Profile, Rate Limits & Quotas
+**And** Model Settings shows: Embedding Model dropdown, Domain selector, Model Parameters
+**And** Compliance Profile shows: Compliance framework selector (HIPAA, PCI DSS, GDPR), compliance settings
+**And** Rate Limits & Quotas shows: Rate limit settings, Storage quota, Usage quotas
+**And** Configuration calls MCP tool: `rag_configure_tenant_models` for model settings
+**And** Configuration calls MCP tool: `rag_update_tenant_config` for other settings (when available)
+**And** Configuration shows current settings
+**And** Configuration validates changes before saving
+**And** Configuration shows save confirmation
+**And** Configuration handles errors gracefully
+
+**Given** Model settings are required
+**When** I implement model configuration
+**Then** Embedding Model dropdown shows available models (text-embedding-ada-002, text-embedding-3-large, etc.)
+**And** Domain selector shows available domains (Healthcare, Fintech, Legal, etc.)
+**And** Model Parameters section shows configurable parameters
+**And** Model settings are saved via MCP tool
+**And** Model changes trigger re-indexing notification (if applicable)
+
+**Given** Compliance profile is required
+**When** I implement compliance configuration
+**Then** Compliance framework selector shows available frameworks
+**And** Compliance settings are displayed based on selected framework
+**And** Compliance settings are saved and applied
+**And** Compliance status is displayed
+
+**Design References**:
+- Configuration Page Mockup: `journey-mockups/pat-journey/02-configuration.png`
+- Configuration Wireframe: `admin-ui-wireframes.md` (Configuration section)
+- User Journey: `admin-ui-user-journey-maps.md` (Lisa's Journey - Configuration use case)
+
+#### Story 11.5: Analytics & Reporting
+
+As a **Tenant Admin**,
+I want **to view analytics and reports for my tenant**,
+So that **I can understand usage patterns and optimize my knowledge base**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing analytics page
+**When** I create analytics interface
+**Then** Analytics page has tabs/sections: Usage Statistics, Search Analytics, Memory Analytics
+**And** Usage Statistics shows: Total searches, Memory operations, Storage usage, Active users
+**And** Search Analytics shows: Query performance chart, Top queries, Relevance scores, Error rate
+**And** Memory Analytics shows: Memory operations over time, Memory usage by user
+**And** Analytics calls MCP tool: `rag_get_usage_stats` for usage statistics
+**And** Analytics calls MCP tool: `rag_get_search_analytics` for search analytics (when available)
+**And** Analytics calls MCP tool: `rag_get_memory_analytics` for memory analytics (when available)
+**And** Analytics shows charts and graphs (using charting library)
+**And** Analytics has time range selector (Last 7 days, Last 30 days, Custom range)
+**And** Analytics is responsive and follows design system
+
+**Given** Charts and visualizations are required
+**When** I implement analytics
+**Then** Charts use appropriate chart types (line, bar, pie, etc.)
+**And** Charts are interactive (hover for details, zoom, etc.)
+**And** Charts follow design system colors
+**And** Charts are accessible (ARIA labels, keyboard navigation)
+
+**Design References**:
+- Analytics Dashboard Mockup: `journey-mockups/pat-journey/03-analytics.png`
+- Analytics Wireframe: `admin-ui-wireframes.md` (Analytics section)
+- User Journey: `admin-ui-user-journey-maps.md` (Lisa's Journey - Analytics use case)
+
+#### Story 11.6: User Management
+
+As a **Tenant Admin**,
+I want **to manage Project Admins and End Users within my tenant**,
+So that **I can control access and delegate responsibilities**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing user management
+**When** I create user management page
+**Then** User management shows: List of users (Project Admins, End Users)
+**And** User list shows: Name, Email, Role, Status, Actions
+**And** User management has "Create User" button
+**And** User management has search and filter options
+**And** User management calls backend API (which may use MCP tools or direct database access)
+**And** User management allows: Create user, Assign role, Deactivate user
+**And** User management shows role assignments
+**And** User management is responsive and follows design system
+
+**Given** User creation is required
+**When** I implement user creation
+**Then** Create User dialog/form has: Name, Email, Role selector, Initial permissions
+**And** User creation validates email format
+**And** User creation assigns user to current tenant
+**And** User creation sends invitation email (if applicable)
+**And** User creation shows success confirmation
+
+**Given** Role assignment is required
+**When** I implement role management
+**Then** Role selector shows available roles (Project Admin, End User)
+**And** Role changes are saved
+**And** Role changes are logged for audit
+**And** Role changes take effect immediately
+
+**Design References**:
+- User Management Wireframe: `admin-ui-wireframes.md` (User Management section)
+- User Journey: `admin-ui-user-journey-maps.md` (Lisa's Journey - User Management use case)
+
+#### Story 11.T: Tenant Admin Core Features Test Story
+
+As a **QA Engineer**,
+I want **to validate Tenant Admin core features**,
+So that **I can ensure all features work correctly and integrate with backend**.
+
+**Acceptance Criteria:**
+
+**Given** Tenant Admin features are implemented
+**When** I test the features
+**Then** Tenant dashboard displays correct metrics
+**And** Document upload works for all supported file types
+**And** Document list displays and filters correctly
+**And** Document viewer displays documents correctly
+**And** Document update creates new versions correctly
+**And** Document deletion works correctly
+**And** Configuration changes are saved and applied
+**And** Analytics display correct data
+**And** User management works correctly
+**And** All features integrate with MCP tools correctly
+**And** All features follow design system guidelines
+**And** All features are responsive and accessible
+
+---
+
+### Epic 12: Uber Admin Core Features
+
+**Goal**: Implement core features for Uber Admin users, including platform dashboard, tenant management, tenant context switcher, and platform analytics, enabling platform operators to manage the entire RAG infrastructure.
+
+**Business Value**: Enables platform operators to efficiently onboard tenants, monitor platform health, manage all tenants, and provide support through tenant context switching, reducing operational overhead and improving tenant satisfaction.
+
+**Scope**:
+- Platform Dashboard with cross-tenant metrics and system health
+- Tenant Management (list, create, view details, tenant creation wizard)
+- Tenant Context Switcher (switch to tenant view, exit to platform view)
+- Platform Analytics (cross-tenant metrics, system performance, usage trends)
+
+**Success Criteria**:
+- Uber Admin can view platform dashboard with cross-tenant metrics
+- Uber Admin can create new tenants via wizard (<5 minutes)
+- Uber Admin can view and manage all tenants
+- Uber Admin can switch to tenant context to help tenants
+- Uber Admin can view platform-wide analytics
+- All features integrate with existing MCP tools
+
+**Dependencies**: 
+- Epic 10 (Admin UI Foundation) - Base infrastructure
+- Epic 11 (Tenant Admin Core Features) - Tenant features (for context switching)
+- Epic 2 (Tenant Onboarding) - Tenant management MCP tools
+
+**Design Documents**:
+- User Journey: Alex Chen (Uber Admin) - `admin-ui-user-journey-maps.md`
+- Visual Mockups: `journey-mockups/alex-journey/` (5 mockups)
+- Wireframes: `admin-ui-wireframes.md` (Uber Admin sections)
+
+**Technical Considerations**:
+- Platform dashboard must aggregate data from all tenants
+- Tenant creation wizard must call multiple MCP tools in sequence
+- Context switching must preserve Uber Admin permissions
+- Platform analytics must aggregate cross-tenant data
+- All features must respect Uber Admin role permissions
+
+**Timeline**: Weeks 5-6 of MVP (8-week timeline)
+
+#### Story 12.1: Platform Dashboard Implementation
+
+As a **Uber Admin**,
+I want **to view the platform dashboard with cross-tenant metrics and system health**,
+So that **I can monitor the overall platform status and identify issues**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing platform dashboard
+**When** I create the dashboard page
+**Then** Dashboard shows: Total Tenants count
+**And** Dashboard shows: Active Tenants count
+**And** Dashboard shows: System Health status (Healthy/Warning/Error)
+**And** Dashboard shows: Platform Metrics (total searches, total documents, total users)
+**And** Dashboard shows: Tenant Health Grid (table/list of tenants with health status)
+**And** Dashboard shows: Usage Trends chart (over time)
+**And** Dashboard shows: Recent Activity feed (cross-tenant)
+**And** Dashboard data is aggregated from all tenants (via MCP tools or direct queries)
+**And** Dashboard is responsive and follows design system
+
+**Given** Tenant health grid is required
+**When** I implement health grid
+**Then** Grid shows: Tenant Name, Domain, Health Status, Document Count, Last Activity
+**And** Grid is sortable and filterable
+**And** Grid links to tenant details page
+**And** Grid shows health status indicators (green/yellow/red)
+**And** Grid calls backend API to aggregate tenant data
+
+**Given** System health is required
+**When** I implement system health
+**Then** System health aggregates health from all services (FAISS, Meilisearch, PostgreSQL, Redis, MinIO)
+**And** System health shows overall status
+**And** System health shows service-level status
+**And** System health links to detailed health page
+
+**Design References**:
+- Platform Dashboard Mockup: `journey-mockups/alex-journey/01-platform-dashboard.png`
+- Dashboard Wireframe: `admin-ui-wireframes.md` (Platform Dashboard section)
+- User Journey: `admin-ui-user-journey-maps.md` (Alex's Journey - Stage 1)
+
+#### Story 12.2: Tenant Management - List & Details
+
+As a **Uber Admin**,
+I want **to view and manage all tenants**,
+So that **I can monitor tenant status and access tenant details**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing tenant list
+**When** I create tenant list page
+**Then** List shows table with columns: Tenant Name, Domain, Status, Health, Documents, Users, Actions
+**And** List has search bar at top
+**And** List has filter options (Domain, Status, Health)
+**And** List has pagination
+**And** List calls MCP tool or backend API to get all tenants
+**And** List shows tenant status (Active, Inactive, Suspended)
+**And** List has actions: View Details, Switch to Tenant View, Edit (if available)
+**And** List is responsive and follows design system
+
+**Given** I am implementing tenant details
+**When** I create tenant details page
+**Then** Details page shows: Tenant information (name, domain, contact info)
+**And** Details page shows: Health status
+**And** Details page shows: Configuration summary (models, compliance, rate limits)
+**And** Details page shows: Quick stats (documents, users, usage)
+**And** Details page shows: "Switch to Tenant View" button
+**And** Details page calls MCP tools: `rag_get_template` (if template-based), tenant config queries
+**And** Details page is responsive and follows design system
+
+**Design References**:
+- Tenant List Mockup: `journey-mockups/alex-journey/02-tenant-list.png`
+- Tenant Details: Referenced in journey maps
+- User Journey: `admin-ui-user-journey-maps.md` (Alex's Journey - Stage 2, 5)
+
+#### Story 12.3: Tenant Creation Wizard
+
+As a **Uber Admin**,
+I want **to create new tenants via a multi-step wizard**,
+So that **I can onboard tenants quickly (<5 minutes)**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing tenant creation wizard
+**When** I create the wizard
+**Then** Wizard has 4 steps: Basic Information, Template Selection, Initial Configuration, Review & Create
+**And** Wizard shows progress indicator (Step X of 4)
+**And** Wizard has Next/Back navigation
+**And** Wizard validates each step before proceeding
+**And** Wizard calls MCP tools: `rag_list_templates`, `rag_get_template`, `rag_register_tenant`, `rag_configure_tenant_models`
+**And** Wizard shows success confirmation with tenant ID
+**And** Wizard allows "View Tenant" or "Switch to Tenant View" after creation
+
+**Given** Step 1: Basic Information is required
+**When** I implement step 1
+**Then** Step 1 form has: Tenant Name, Domain (dropdown), Contact Email, Contact Phone
+**And** Step 1 validates required fields
+**And** Step 1 validates email format
+**And** Step 1 shows validation errors
+
+**Given** Step 2: Template Selection is required
+**When** I implement step 2
+**Then** Step 2 shows template cards with preview
+**And** Step 2 shows template details (compliance, models, settings)
+**And** Step 2 has "Preview Template" button
+**And** Step 2 calls MCP tool: `rag_list_templates` to get available templates
+**And** Step 2 calls MCP tool: `rag_get_template` to get template details
+**And** Step 2 allows selecting a template
+
+**Given** Step 3: Initial Configuration is required
+**When** I implement step 3
+**Then** Step 3 shows pre-filled settings from selected template
+**And** Step 3 allows adjusting settings (compliance, embedding model, rate limits, storage quota)
+**And** Step 3 shows current selections
+**And** Step 3 validates configuration
+
+**Given** Step 4: Review & Create is required
+**When** I implement step 4
+**Then** Step 4 shows summary: Tenant name, domain, template, key settings, estimated setup time
+**And** Step 4 has "Create Tenant" button
+**And** Step 4 calls MCP tools in sequence: `rag_register_tenant`, `rag_configure_tenant_models`
+**And** Step 4 shows creation progress (Creating tenant record → Provisioning FAISS index → Setting up Redis namespace → Configuring PostgreSQL schema → Applying compliance settings → Initializing models)
+**And** Step 4 shows success message with tenant ID, status, setup time
+**And** Step 4 provides actions: "View Tenant", "Switch to Tenant View"
+
+**Design References**:
+- Tenant Wizard Step 1 Mockup: `journey-mockups/alex-journey/03-tenant-wizard-step1.png`
+- Tenant Progress Mockup: `journey-mockups/alex-journey/04-tenant-progress.png`
+- Tenant Success Mockup: `journey-mockups/alex-journey/05-tenant-success.png`
+- User Journey: `admin-ui-user-journey-maps.md` (Alex's Journey - Stage 3, 4)
+
+#### Story 12.4: Tenant Context Switcher
+
+As a **Uber Admin**,
+I want **to switch to a tenant's view to help them**,
+So that **I can see exactly what they see and assist with issues**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing context switcher
+**When** I create context switcher component
+**Then** Context switcher appears in header for Uber Admin
+**Then** Context switcher is a dropdown/select component
+**And** Context switcher shows list of all tenants (searchable)
+**And** Context switcher allows selecting a tenant
+**And** Context switcher triggers context switch when tenant is selected
+**And** Context switch updates UI to Tenant Admin view
+**And** Context switch shows banner: "🔧 Uber Admin Mode - Viewing: [Tenant Name]"
+**And** Context switch updates navigation to Tenant Admin navigation
+**And** Context switch updates all API calls to use selected tenant_id
+**And** Context switch provides "Exit to Platform View" button
+**And** Context switch is persisted in session
+
+**Given** Context switch banner is required
+**When** I implement banner
+**Then** Banner is prominently displayed at top of page
+**And** Banner shows Uber Admin mode indicator
+**And** Banner shows current tenant name
+**And** Banner has "Exit to Platform View" button
+**And** Banner follows design system (yellow accent for context switch)
+
+**Given** Context switch navigation is required
+**When** I implement navigation update
+**Then** Navigation changes from Platform navigation to Tenant Admin navigation
+**And** Navigation shows all Tenant Admin menu items
+**And** Navigation maintains Uber Admin permissions (can access all features)
+**And** Navigation returns to Platform navigation when exiting context
+
+**Design References**:
+- Context Switcher Mockup: `journey-mockups/pat-journey/01-context-switcher.png`
+- User Journey: `admin-ui-user-journey-maps.md` (Alex's Journey - Stage 5, Pat's Journey - Stage 2)
+
+#### Story 12.5: Platform Analytics
+
+As a **Uber Admin**,
+I want **to view platform-wide analytics and metrics**,
+So that **I can understand platform usage and performance trends**.
+
+**Acceptance Criteria:**
+
+**Given** I am implementing platform analytics
+**When** I create analytics page
+**Then** Analytics page has tabs/sections: Cross-Tenant Metrics, System Performance, Usage Trends
+**And** Cross-Tenant Metrics shows: Total searches across all tenants, Total documents, Total users, Average tenant health
+**And** System Performance shows: Service health metrics, Response times, Error rates, Throughput
+**And** Usage Trends shows: Usage over time charts, Tenant growth, Feature adoption
+**And** Analytics aggregates data from all tenants (via MCP tools or direct queries)
+**And** Analytics has time range selector
+**And** Analytics shows charts and graphs
+**And** Analytics is responsive and follows design system
+
+**Given** Cross-tenant aggregation is required
+**When** I implement analytics
+**Then** Analytics calls backend API to aggregate data from all tenants
+**And** Analytics handles large datasets efficiently
+**And** Analytics shows loading states during data fetch
+**And** Analytics handles errors gracefully
+
+**Design References**:
+- Platform Analytics Wireframe: `admin-ui-wireframes.md` (Platform Analytics section)
+- User Journey: `admin-ui-user-journey-maps.md` (Alex's Journey - Platform Analytics use case)
+
+#### Story 12.T: Uber Admin Core Features Test Story
+
+As a **QA Engineer**,
+I want **to validate Uber Admin core features**,
+So that **I can ensure all features work correctly and integrate with backend**.
+
+**Acceptance Criteria:**
+
+**Given** Uber Admin features are implemented
+**When** I test the features
+**Then** Platform dashboard displays correct cross-tenant metrics
+**And** Tenant list displays and filters correctly
+**And** Tenant creation wizard completes in <5 minutes
+**And** Tenant creation wizard calls all MCP tools correctly
+**And** Tenant context switcher works correctly
+**And** Context switch shows correct tenant view
+**And** Context switch allows exiting to platform view
+**And** Platform analytics display correct aggregated data
+**And** All features integrate with MCP tools correctly
+**And** All features follow design system guidelines
+**And** All features are responsive and accessible
