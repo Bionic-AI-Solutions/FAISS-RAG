@@ -93,7 +93,7 @@ TOOL_PERMISSIONS: dict[str, Set[UserRole]] = {
     "rag_get_usage_stats": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
     "rag_get_search_analytics": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
     "rag_get_memory_analytics": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},
-    "rag_get_system_health": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},  # Phase 2
+    "rag_get_system_health": {UserRole.UBER_ADMIN},  # Uber Admin only - system-wide health monitoring
     "rag_get_tenant_health": {UserRole.UBER_ADMIN, UserRole.TENANT_ADMIN},  # Phase 2
     
     # Backup tools - Uber Admin and Tenant Admin only

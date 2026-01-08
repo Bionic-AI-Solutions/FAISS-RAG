@@ -11,6 +11,8 @@ from app.services.minio_client import check_minio_health
 from app.services.meilisearch_client import check_meilisearch_health
 from app.services.mem0_client import mem0_client
 from app.services.langfuse_client import check_langfuse_health
+from app.services.faiss_manager import faiss_manager
+from pathlib import Path
 
 
 async def check_mem0_health() -> Dict[str, Any]:
@@ -37,6 +39,64 @@ async def check_database_health() -> Dict[str, Any]:
     return await check_db_connection()
 
 
+async def check_faiss_health() -> Dict[str, Any]:
+    """
+    Check FAISS health by verifying index manager initialization and index path accessibility.
+    
+    Returns:
+        dict: Health status for FAISS
+    """
+    try:
+        # Check if FAISS manager is initialized
+        if not faiss_manager:
+            return {
+                "status": False,
+                "message": "FAISS manager not initialized",
+            }
+        
+        # Check if index path is accessible
+        try:
+            faiss_manager._ensure_index_path()
+            index_path = faiss_manager.index_path
+            
+            # Verify path exists or can be created
+            if not index_path.exists():
+                # Try to create it
+                try:
+                    index_path.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    return {
+                        "status": False,
+                        "message": f"FAISS index path not accessible: {str(e)}",
+                    }
+            
+            # Check if path is writable
+            test_file = index_path / ".health_check"
+            try:
+                test_file.touch()
+                test_file.unlink()
+            except Exception as e:
+                return {
+                    "status": False,
+                    "message": f"FAISS index path not writable: {str(e)}",
+                }
+            
+            return {
+                "status": True,
+                "message": f"FAISS is operational (Index path: {index_path})",
+            }
+        except Exception as e:
+            return {
+                "status": False,
+                "message": f"FAISS health check failed: {str(e)}",
+            }
+    except Exception as e:
+        return {
+            "status": False,
+            "message": f"FAISS health check error: {str(e)}",
+        }
+
+
 async def check_all_services_health() -> Dict[str, Any]:
     """
     Check health of all infrastructure services.
@@ -51,6 +111,7 @@ async def check_all_services_health() -> Dict[str, Any]:
         check_minio_health(),
         check_meilisearch_health(),
         check_mem0_health(),
+        check_faiss_health(),
         check_langfuse_health(),
         return_exceptions=True,
     )
@@ -62,7 +123,8 @@ async def check_all_services_health() -> Dict[str, Any]:
         "minio": results[2] if not isinstance(results[2], Exception) else {"status": False, "message": str(results[2])},
         "meilisearch": results[3] if not isinstance(results[3], Exception) else {"status": False, "message": str(results[3])},
         "mem0": results[4] if not isinstance(results[4], Exception) else {"status": False, "message": str(results[4])},
-        "langfuse": results[5] if not isinstance(results[5], Exception) else {"status": False, "message": str(results[5])},
+        "faiss": results[5] if not isinstance(results[5], Exception) else {"status": False, "message": str(results[5])},
+        "langfuse": results[6] if not isinstance(results[6], Exception) else {"status": False, "message": str(results[6])},
     }
     
     # Calculate overall status
@@ -90,6 +152,7 @@ async def check_service_health(service_name: str) -> Dict[str, Any]:
         "minio": check_minio_health,
         "meilisearch": check_meilisearch_health,
         "mem0": check_mem0_health,
+        "faiss": check_faiss_health,
         "langfuse": check_langfuse_health,
     }
     

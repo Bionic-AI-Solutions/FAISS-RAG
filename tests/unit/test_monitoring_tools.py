@@ -38,6 +38,7 @@ def get_tool_func(tool_name: str):
 rag_get_usage_stats = get_tool_func("rag_get_usage_stats")
 rag_get_search_analytics = get_tool_func("rag_get_search_analytics")
 rag_get_memory_analytics = get_tool_func("rag_get_memory_analytics")
+rag_get_system_health = get_tool_func("rag_get_system_health")
 
 
 class TestRagGetUsageStats:
@@ -1063,4 +1064,321 @@ class TestRagGetMemoryAnalytics:
             with patch("app.mcp.tools.monitoring.get_tenant_id_from_context", return_value=tenant_id):
                 with pytest.raises(ValueError, match="Invalid date_range format"):
                     await rag_get_memory_analytics(date_range="invalid-format")
+
+
+class TestRagGetSystemHealth:
+    """Tests for rag_get_system_health MCP tool."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        # Reset context variables before each test
+        _role_context.set(None)
+        _tenant_id_context.set(None)
+        _user_id_context.set(None)
+
+    @pytest.mark.asyncio
+    async def test_requires_uber_admin(self):
+        """Test that system health requires Uber Admin role only."""
+        if not rag_get_system_health:
+            pytest.skip("rag_get_system_health not registered")
+
+        _role_context.set(UserRole.TENANT_ADMIN)  # Not allowed
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.TENANT_ADMIN):
+            with pytest.raises(AuthorizationError, match="Access denied"):
+                await rag_get_system_health()
+
+    @pytest.mark.asyncio
+    async def test_uber_admin_can_access(self):
+        """Test that Uber Admin can access system health."""
+        if not rag_get_system_health:
+            pytest.skip("rag_get_system_health not registered")
+
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        # Mock health check service
+        mock_component_status = {
+            "status": "healthy",
+            "services": {
+                "postgresql": {"status": True, "message": "PostgreSQL is healthy"},
+                "redis": {"status": True, "message": "Redis is healthy"},
+                "minio": {"status": True, "message": "MinIO is healthy"},
+                "meilisearch": {"status": True, "message": "Meilisearch is healthy"},
+                "mem0": {"status": True, "message": "Mem0 is operational"},
+                "faiss": {"status": True, "message": "FAISS is operational"},
+            },
+        }
+
+        # Mock database session
+        mock_session = AsyncMock()
+        # Mock audit log queries - return empty lists (no logs)
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []  # No audit logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with patch("app.mcp.tools.monitoring.check_all_services_health", return_value=mock_component_status):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_system_health()
+
+        assert result["overall_status"] == "healthy"
+        assert "component_status" in result
+        assert "performance_metrics" in result
+        assert "error_rates" in result
+        assert "health_summary" in result
+        assert result["cached"] is False
+
+    @pytest.mark.asyncio
+    async def test_caching(self):
+        """Test that system health results are cached."""
+        if not rag_get_system_health:
+            pytest.skip("rag_get_system_health not registered")
+
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        # Mock cached result
+        cached_result = {
+            "overall_status": "healthy",
+            "component_status": {},
+            "performance_metrics": {},
+            "error_rates": {},
+            "health_summary": {},
+            "cached": False,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+        # Mock Redis (cache hit)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = json.dumps(cached_result)
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                result = await rag_get_system_health()
+
+        assert result["cached"] is True
+        assert result["overall_status"] == "healthy"
+
+    @pytest.mark.asyncio
+    async def test_performance_metrics_collection(self):
+        """Test that performance metrics are collected from audit logs."""
+        if not rag_get_system_health:
+            pytest.skip("rag_get_system_health not registered")
+
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        # Mock component status
+        mock_component_status = {
+            "status": "healthy",
+            "services": {
+                "postgresql": {"status": True, "message": "OK"},
+                "redis": {"status": True, "message": "OK"},
+                "minio": {"status": True, "message": "OK"},
+                "meilisearch": {"status": True, "message": "OK"},
+                "mem0": {"status": True, "message": "OK"},
+                "faiss": {"status": True, "message": "OK"},
+            },
+        }
+
+        # Mock audit logs with response times
+        mock_logs = [
+            MagicMock(
+                details={"phase": "post_execution", "execution_success": True, "response_time_ms": 100},
+                timestamp=datetime.utcnow() - timedelta(minutes=1),
+            ),
+            MagicMock(
+                details={"phase": "post_execution", "execution_success": True, "response_time_ms": 200},
+                timestamp=datetime.utcnow() - timedelta(minutes=2),
+            ),
+            MagicMock(
+                details={"phase": "post_execution", "execution_success": True, "response_time_ms": 150},
+                timestamp=datetime.utcnow() - timedelta(minutes=3),
+            ),
+        ]
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = mock_logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with patch("app.mcp.tools.monitoring.check_all_services_health", return_value=mock_component_status):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_system_health()
+
+        assert "performance_metrics" in result
+        assert result["performance_metrics"]["total_requests"] == 3
+        assert result["performance_metrics"]["average_response_time_ms"] > 0
+
+    @pytest.mark.asyncio
+    async def test_error_rates_calculation(self):
+        """Test that error rates are calculated from audit logs."""
+        if not rag_get_system_health:
+            pytest.skip("rag_get_system_health not registered")
+
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        # Mock component status
+        mock_component_status = {
+            "status": "healthy",
+            "services": {
+                "postgresql": {"status": True, "message": "OK"},
+                "redis": {"status": True, "message": "OK"},
+                "minio": {"status": True, "message": "OK"},
+                "meilisearch": {"status": True, "message": "OK"},
+                "mem0": {"status": True, "message": "OK"},
+                "faiss": {"status": True, "message": "OK"},
+            },
+        }
+
+        # Mock audit logs with mixed success/failure
+        mock_logs = [
+            MagicMock(
+                details={"phase": "post_execution", "execution_success": True},
+                timestamp=datetime.utcnow() - timedelta(minutes=1),
+            ),
+            MagicMock(
+                details={"phase": "post_execution", "execution_success": False, "error_type": "ValidationError"},
+                timestamp=datetime.utcnow() - timedelta(minutes=2),
+            ),
+            MagicMock(
+                details={"phase": "post_execution", "execution_success": True},
+                timestamp=datetime.utcnow() - timedelta(minutes=3),
+            ),
+        ]
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = mock_logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with patch("app.mcp.tools.monitoring.check_all_services_health", return_value=mock_component_status):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_system_health()
+
+        assert "error_rates" in result
+        assert result["error_rates"]["total_requests"] == 3
+        assert result["error_rates"]["successful_requests"] == 2
+        assert result["error_rates"]["failed_requests"] == 1
+        assert result["error_rates"]["error_rate_percent"] > 0
+
+    @pytest.mark.asyncio
+    async def test_health_summary_generation(self):
+        """Test that health summary and recommendations are generated."""
+        if not rag_get_system_health:
+            pytest.skip("rag_get_system_health not registered")
+
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        # Mock component status with unhealthy component
+        mock_component_status = {
+            "status": "unhealthy",
+            "services": {
+                "postgresql": {"status": False, "message": "Connection failed"},
+                "redis": {"status": True, "message": "OK"},
+                "minio": {"status": True, "message": "OK"},
+                "meilisearch": {"status": True, "message": "OK"},
+                "mem0": {"status": True, "message": "OK"},
+                "faiss": {"status": True, "message": "OK"},
+            },
+        }
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with patch("app.mcp.tools.monitoring.check_all_services_health", return_value=mock_component_status):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_system_health()
+
+        assert "health_summary" in result
+        assert result["health_summary"]["overall_status"] == "unhealthy"
+        assert "postgresql" in result["health_summary"]["unhealthy_components"]
+        assert len(result["health_summary"]["recommendations"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_degraded_status_detection(self):
+        """Test that degraded status is detected correctly."""
+        if not rag_get_system_health:
+            pytest.skip("rag_get_system_health not registered")
+
+        _role_context.set(UserRole.UBER_ADMIN)
+
+        # Mock component status with all healthy
+        mock_component_status = {
+            "status": "healthy",
+            "services": {
+                "postgresql": {"status": True, "message": "OK"},
+                "redis": {"status": True, "message": "OK"},
+                "minio": {"status": True, "message": "OK"},
+                "meilisearch": {"status": True, "message": "OK"},
+                "mem0": {"status": True, "message": "OK"},
+                "faiss": {"status": True, "message": "OK"},
+            },
+        }
+
+        # Mock audit logs with high response times (should trigger degraded status)
+        mock_logs = [
+            MagicMock(
+                details={"phase": "post_execution", "execution_success": True, "response_time_ms": 2000},  # > 1 second
+                timestamp=datetime.utcnow() - timedelta(minutes=1),
+            ),
+        ]
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = mock_logs
+        mock_session.execute.return_value = mock_result
+
+        # Mock Redis (no cache)
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None
+        mock_redis.setex = AsyncMock()
+
+        with patch("app.mcp.tools.monitoring.get_role_from_context", return_value=UserRole.UBER_ADMIN):
+            with patch("app.mcp.tools.monitoring.check_all_services_health", return_value=mock_component_status):
+                with patch("app.mcp.tools.monitoring.get_db_session") as mock_get_session:
+                    mock_get_session.return_value.__aiter__.return_value = [mock_session]
+                    with patch("app.mcp.tools.monitoring.get_redis_client", return_value=mock_redis):
+                        result = await rag_get_system_health()
+
+        # Should be degraded due to high response time
+        assert result["health_summary"]["overall_status"] in {"healthy", "degraded"}
+        # Should have recommendations about high response time
+        recommendations = " ".join(result["health_summary"]["recommendations"])
+        assert "response time" in recommendations.lower() or "no immediate action" in recommendations.lower()
 

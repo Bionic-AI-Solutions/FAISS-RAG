@@ -28,6 +28,7 @@ from app.mcp.middleware.tenant import (
 from app.mcp.server import mcp_server
 from app.services.minio_client import create_minio_client, get_tenant_bucket
 from app.services.redis_client import get_redis_client
+from app.services.health import check_all_services_health
 
 logger = structlog.get_logger(__name__)
 
@@ -1027,6 +1028,411 @@ async def rag_get_memory_analytics(
                 tenant_id=str(query_tenant_id),
                 total_memories=analytics["total_memories"],
                 active_users=analytics["active_users"],
+            )
+            
+            return result
+        finally:
+            await session.close()
+        break
+
+
+async def _collect_performance_metrics(
+    session: AsyncSession,
+    time_window_minutes: int = 5,
+) -> Dict[str, Any]:
+    """
+    Collect performance metrics from audit logs for the last N minutes.
+    
+    Args:
+        session: Database session
+        time_window_minutes: Time window in minutes (default: 5)
+    
+    Returns:
+        Dictionary with performance metrics:
+        {
+            "average_response_time_ms": float,
+            "p95_response_time_ms": float,
+            "p99_response_time_ms": float,
+            "total_requests": int,
+            "requests_per_second": float,
+        }
+    """
+    try:
+        # Calculate time window
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(minutes=time_window_minutes)
+        
+        # Query audit logs for the time window
+        query = (
+            select(AuditLog)
+            .where(
+                and_(
+                    AuditLog.timestamp >= start_time,
+                    AuditLog.timestamp <= end_time,
+                )
+            )
+            .order_by(AuditLog.timestamp.desc())
+        )
+        
+        result = await session.execute(query)
+        all_logs = result.scalars().all()
+        
+        # Filter for successful post-execution requests and extract response times
+        response_times = []
+        total_requests = 0
+        
+        for log in all_logs:
+            if (
+                log.details
+                and log.details.get("phase") == "post_execution"
+                and log.details.get("execution_success", False)
+            ):
+                total_requests += 1
+                # Extract response time from details
+                response_time = log.details.get("response_time_ms")
+                if response_time is not None:
+                    response_times.append(response_time)
+        
+        if not response_times:
+            return {
+                "average_response_time_ms": 0.0,
+                "p95_response_time_ms": 0.0,
+                "p99_response_time_ms": 0.0,
+                "total_requests": total_requests,
+                "requests_per_second": 0.0,
+            }
+        
+        # Calculate statistics
+        response_times_sorted = sorted(response_times)
+        avg_response_time = sum(response_times) / len(response_times)
+        
+        # Calculate percentiles
+        p95_index = int(len(response_times_sorted) * 0.95)
+        p99_index = int(len(response_times_sorted) * 0.99)
+        
+        p95_response_time = response_times_sorted[min(p95_index, len(response_times_sorted) - 1)]
+        p99_response_time = response_times_sorted[min(p99_index, len(response_times_sorted) - 1)]
+        
+        # Calculate requests per second
+        time_window_seconds = time_window_minutes * 60
+        requests_per_second = total_requests / time_window_seconds if time_window_seconds > 0 else 0.0
+        
+        return {
+            "average_response_time_ms": round(avg_response_time, 2),
+            "p95_response_time_ms": round(p95_response_time, 2),
+            "p99_response_time_ms": round(p99_response_time, 2),
+            "total_requests": total_requests,
+            "requests_per_second": round(requests_per_second, 2),
+        }
+    except Exception as e:
+        logger.error("Failed to collect performance metrics", error=str(e))
+        return {
+            "average_response_time_ms": 0.0,
+            "p95_response_time_ms": 0.0,
+            "p99_response_time_ms": 0.0,
+            "total_requests": 0,
+            "requests_per_second": 0.0,
+        }
+
+
+async def _calculate_error_rates(
+    session: AsyncSession,
+    time_window_minutes: int = 5,
+) -> Dict[str, Any]:
+    """
+    Calculate error rates from audit logs for the last N minutes.
+    
+    Args:
+        session: Database session
+        time_window_minutes: Time window in minutes (default: 5)
+    
+    Returns:
+        Dictionary with error rates:
+        {
+            "total_requests": int,
+            "successful_requests": int,
+            "failed_requests": int,
+            "error_rate_percent": float,
+            "errors_by_type": Dict[str, int],
+        }
+    """
+    try:
+        # Calculate time window
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(minutes=time_window_minutes)
+        
+        # Query audit logs for the time window
+        query = (
+            select(AuditLog)
+            .where(
+                and_(
+                    AuditLog.timestamp >= start_time,
+                    AuditLog.timestamp <= end_time,
+                )
+            )
+        )
+        
+        result = await session.execute(query)
+        all_logs = result.scalars().all()
+        
+        # Filter for post-execution logs only
+        logs = [
+            log
+            for log in all_logs
+            if log.details and log.details.get("phase") == "post_execution"
+        ]
+        
+        total_requests = len(logs)
+        successful_requests = 0
+        failed_requests = 0
+        errors_by_type = Counter()
+        
+        for log in logs:
+            if log.details:
+                success = log.details.get("execution_success", False)
+                if success:
+                    successful_requests += 1
+                else:
+                    failed_requests += 1
+                    # Extract error type from details
+                    error_type = log.details.get("error_type", "unknown")
+                    errors_by_type[error_type] += 1
+        
+        error_rate_percent = (
+            (failed_requests / total_requests * 100) if total_requests > 0 else 0.0
+        )
+        
+        return {
+            "total_requests": total_requests,
+            "successful_requests": successful_requests,
+            "failed_requests": failed_requests,
+            "error_rate_percent": round(error_rate_percent, 2),
+            "errors_by_type": dict(errors_by_type),
+        }
+    except Exception as e:
+        logger.error("Failed to calculate error rates", error=str(e))
+        return {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "error_rate_percent": 0.0,
+            "errors_by_type": {},
+        }
+
+
+def _generate_health_summary_and_recommendations(
+    component_status: Dict[str, Any],
+    performance_metrics: Dict[str, Any],
+    error_rates: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Generate health summary and recommendations based on component status, performance, and error rates.
+    
+    Args:
+        component_status: Component health status from check_all_services_health
+        performance_metrics: Performance metrics from audit logs
+        error_rates: Error rates from audit logs
+    
+    Returns:
+        Dictionary with summary and recommendations:
+        {
+            "overall_status": str,  # "healthy", "degraded", "unhealthy"
+            "summary": str,
+            "degraded_components": List[str],
+            "unhealthy_components": List[str],
+            "recommendations": List[str],
+        }
+    """
+    services = component_status.get("services", {})
+    degraded_components = []
+    unhealthy_components = []
+    
+    # Identify degraded and unhealthy components
+    for service_name, service_status in services.items():
+        if not service_status.get("status", False):
+            unhealthy_components.append(service_name)
+        elif "degraded" in service_status.get("message", "").lower():
+            degraded_components.append(service_name)
+    
+    # Determine overall status
+    if unhealthy_components:
+        overall_status = "unhealthy"
+    elif degraded_components:
+        overall_status = "degraded"
+    else:
+        overall_status = "healthy"
+    
+    # Check performance metrics
+    p95_response_time = performance_metrics.get("p95_response_time_ms", 0.0)
+    if p95_response_time > 1000:  # > 1 second
+        if overall_status == "healthy":
+            overall_status = "degraded"
+        recommendations = [
+            f"High p95 response time ({p95_response_time}ms). Consider optimizing queries or scaling resources.",
+        ]
+    else:
+        recommendations = []
+    
+    # Check error rates
+    error_rate = error_rates.get("error_rate_percent", 0.0)
+    if error_rate > 5.0:  # > 5% error rate
+        if overall_status == "healthy":
+            overall_status = "degraded"
+        recommendations.append(
+            f"High error rate ({error_rate}%). Investigate error patterns and system stability.",
+        )
+    elif error_rate > 1.0:  # > 1% error rate
+        recommendations.append(
+            f"Elevated error rate ({error_rate}%). Monitor closely for degradation.",
+        )
+    
+    # Add component-specific recommendations
+    if unhealthy_components:
+        recommendations.append(
+            f"Critical: {', '.join(unhealthy_components)} are unhealthy. Immediate attention required.",
+        )
+    if degraded_components:
+        recommendations.append(
+            f"Warning: {', '.join(degraded_components)} are degraded. Monitor and investigate.",
+        )
+    
+    # Generate summary
+    if overall_status == "healthy":
+        summary = "All systems operational. No issues detected."
+    elif overall_status == "degraded":
+        summary = f"System is degraded. {len(degraded_components)} component(s) experiencing issues."
+    else:
+        summary = f"System is unhealthy. {len(unhealthy_components)} critical component(s) are down."
+    
+    if not recommendations:
+        recommendations = ["No immediate action required. System is operating normally."]
+    
+    return {
+        "overall_status": overall_status,
+        "summary": summary,
+        "degraded_components": degraded_components,
+        "unhealthy_components": unhealthy_components,
+        "recommendations": recommendations,
+    }
+
+
+@mcp_server.tool()
+async def rag_get_system_health() -> Dict[str, Any]:
+    """
+    Retrieve overall system health status.
+    
+    Aggregates health from all components (PostgreSQL, FAISS, Mem0, Redis, Meilisearch, MinIO),
+    collects performance metrics, calculates error rates, and provides health summary and recommendations.
+    
+    Results are cached for 30 seconds for performance (health checks should be near real-time).
+    
+    Returns:
+        Dictionary containing system health:
+        {
+            "overall_status": "healthy" | "degraded" | "unhealthy",
+            "component_status": {
+                "postgresql": {"status": bool, "message": str},
+                "redis": {"status": bool, "message": str},
+                "minio": {"status": bool, "message": str},
+                "meilisearch": {"status": bool, "message": str},
+                "mem0": {"status": bool, "message": str},
+                "faiss": {"status": bool, "message": str},
+            },
+            "performance_metrics": {
+                "average_response_time_ms": float,
+                "p95_response_time_ms": float,
+                "p99_response_time_ms": float,
+                "total_requests": int,
+                "requests_per_second": float,
+            },
+            "error_rates": {
+                "total_requests": int,
+                "successful_requests": int,
+                "failed_requests": int,
+                "error_rate_percent": float,
+                "errors_by_type": Dict[str, int],
+            },
+            "health_summary": {
+                "overall_status": str,
+                "summary": str,
+                "degraded_components": List[str],
+                "unhealthy_components": List[str],
+                "recommendations": List[str],
+            },
+            "cached": bool,
+            "timestamp": str,
+        }
+    
+    Raises:
+        AuthorizationError: If user doesn't have permission (Uber Admin only)
+    """
+    # Check permissions (Uber Admin only)
+    current_role = get_role_from_context()
+    if not current_role:
+        raise AuthorizationError("Role not found in context.")
+    
+    try:
+        check_tool_permission(current_role, "rag_get_system_health")
+    except AuthorizationError as e:
+        raise AuthorizationError(f"Access denied: {str(e)}")
+    
+    # Check cache (30 second TTL for near real-time health checks)
+    cache_key = "system_health"
+    cached_health = await _get_cached_stats(cache_key)
+    if cached_health:
+        logger.debug("System health retrieved from cache")
+        return {
+            **cached_health,
+            "cached": True,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    
+    logger.info("Collecting system health status")
+    
+    # Check all services health in parallel
+    component_status = await check_all_services_health()
+    
+    # Collect performance metrics and error rates from audit logs
+    async for session in get_db_session():
+        try:
+            performance_metrics = await _collect_performance_metrics(session, time_window_minutes=5)
+            error_rates = await _calculate_error_rates(session, time_window_minutes=5)
+            
+            # Generate health summary and recommendations
+            health_summary = _generate_health_summary_and_recommendations(
+                component_status,
+                performance_metrics,
+                error_rates,
+            )
+            
+            # Prepare response
+            result = {
+                "overall_status": health_summary["overall_status"],
+                "component_status": component_status.get("services", {}),
+                "performance_metrics": performance_metrics,
+                "error_rates": error_rates,
+                "health_summary": health_summary,
+                "cached": False,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            
+            # Cache the result (30 second TTL - use shorter TTL for health checks)
+            # Override the default cache TTL for this specific key
+            try:
+                redis_client = await get_redis_client()
+                await redis_client.setex(
+                    cache_key,
+                    30,  # 30 seconds for near real-time health checks
+                    json.dumps(result),
+                )
+            except Exception as e:
+                logger.warning("Failed to cache system health", error=str(e))
+            
+            logger.info(
+                "System health collected",
+                overall_status=health_summary["overall_status"],
+                unhealthy_components=len(health_summary["unhealthy_components"]),
+                degraded_components=len(health_summary["degraded_components"]),
             )
             
             return result
