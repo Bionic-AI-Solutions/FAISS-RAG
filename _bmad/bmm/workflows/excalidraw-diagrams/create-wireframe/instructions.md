@@ -106,22 +106,12 @@
     </substep>
   </step>
 
-  <step n="8" goal="Generate Visual Mockup with genImage">
-    <critical>MANDATORY: After creating wireframe, generate visual UI mockup using genImage MCP server</critical>
-    <action>Call genImage MCP tool with tenant_id="fedfina" to generate high-quality UI mockup</action>
-    <action>Create detailed prompt describing the wireframe design, layout, components, colors, and styling</action>
-    <action>Generate mockup image that visualizes the wireframe as a realistic UI design</action>
-    <action>Save generated mockup image alongside wireframe file</action>
-    <action>Include mockup reference in wireframe documentation</action>
-  </step>
-
-  <step n="9" goal="Optimize and Save">
+  <step n="8" goal="Optimize and Save">
     <action>Strip unused elements and elements with isDeleted: true</action>
     <action>Save to {{default_output_file}}</action>
-    <action>Save genImage mockup to same directory with descriptive filename</action>
   </step>
 
-  <step n="10" goal="Validate JSON Syntax">
+  <step n="9" goal="Validate JSON Syntax">
     <critical>NEVER delete the file if validation fails - always fix syntax errors</critical>
     <action>Run: node -e "JSON.parse(require('fs').readFileSync('{{default_output_file}}', 'utf8')); console.log('✓ Valid JSON')"</action>
     <check if="validation fails (exit code 1)">
@@ -135,7 +125,7 @@
     <action>Once validation passes, confirm with user</action>
   </step>
 
-  <step n="11" goal="Validate Content">
+  <step n="10" goal="Validate Content">
     <invoke-task>Validate against {{validation}}</invoke-task>
   </step>
 

@@ -61,31 +61,22 @@ Create diverse visual explorations:
 
 Each mockup will show a complete vision for {{project_name}} with all our design decisions applied."
 
-### 2. Generate Visual Mockups with genImage
+### 2. Create HTML Design Direction Showcase
 
-Generate high-quality UI mockups using genImage MCP server:
-"🎨 Generating Visual Design Direction Mockups!
+Generate interactive visual exploration:
+"🎨 Design Direction Mockups Generated!
 
-**MANDATORY: Using genImage MCP Server**
-
-I'm generating high-quality UI mockup images using the genImage MCP server (tenant_id="fedfina") to visualize each design direction.
-
-**For each design direction variation, I will:**
-
-1. Create detailed prompt describing the design direction, layout, components, colors, typography, and styling
-2. Call genImage MCP tool with tenant_id="fedfina" to generate realistic UI mockup
-3. Save generated mockup images to `{planning_artifacts}/ux-design-mockups/`
-4. Create HTML showcase that displays these visual mockups
+I'm creating a comprehensive HTML design direction showcase at `{planning_artifacts}/ux-design-directions.html`
 
 **What you'll see:**
 
-- 6-8 high-quality visual mockup images (generated via genImage)
-- Realistic UI designs showing complete visual directions
-- Side-by-side comparison of design variations
-- Complete UI examples with actual visual styling
-- Responsive design demonstrations
+- 6-8 full-screen mockup variations
+- Interactive states and hover effects
+- Side-by-side comparison tools
+- Complete UI examples with real content
+- Responsive behavior demonstrations
 
-Each mockup image represents a complete visual direction for your app's look and feel, generated as high-quality images using AI image generation."
+Each mockup represents a complete visual direction for your app's look and feel."
 
 ### 3. Present Design Exploration Framework
 

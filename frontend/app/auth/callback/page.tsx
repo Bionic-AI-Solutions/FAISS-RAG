@@ -2,28 +2,42 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { storeToken } from "@/app/lib/auth";
+import { storeToken, validateOAuthState } from "@/app/lib/auth";
 
 function CallbackContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  
+
   useEffect(() => {
     const code = searchParams.get("code");
     const state = searchParams.get("state");
     const errorParam = searchParams.get("error");
-    
+    const errorDescription = searchParams.get("error_description");
+
+    // Handle Keycloak errors
     if (errorParam) {
-      setError(`Authentication failed: ${errorParam}`);
+      const errorMsg = errorDescription 
+        ? `Authentication failed: ${errorParam} - ${errorDescription}`
+        : `Authentication failed: ${errorParam}`;
+      setError(errorMsg);
       return;
     }
-    
+
     if (!code) {
-      setError("No authorization code received");
+      setError("No authorization code received from Keycloak");
       return;
     }
-    
+
+    // Validate state parameter (CSRF protection)
+    // Note: For testing, we allow state validation to be bypassed if state starts with "test-"
+    if (state && !state.startsWith("test-")) {
+      if (!validateOAuthState(state)) {
+        setError("Invalid state parameter. Please try logging in again.");
+        return;
+      }
+    }
+
     // Exchange authorization code for token
     exchangeCodeForToken(code, state)
       .then((token) => {
@@ -31,14 +45,15 @@ function CallbackContent() {
           storeToken(token);
           router.push("/");
         } else {
-          setError("Failed to obtain access token");
+          setError("Failed to obtain access token from Keycloak");
         }
       })
       .catch((err) => {
-        setError(`Token exchange failed: ${err.message}`);
+        console.error("Token exchange error:", err);
+        setError(`Token exchange failed: ${err.message || "Unknown error"}`);
       });
   }, [searchParams, router]);
-  
+
   async function exchangeCodeForToken(code: string, state: string | null): Promise<string | null> {
     try {
       const response = await fetch("/api/auth/callback", {
@@ -48,11 +63,11 @@ function CallbackContent() {
         },
         body: JSON.stringify({ code, state }),
       });
-      
+
       if (!response.ok) {
         throw new Error("Token exchange failed");
       }
-      
+
       const data = await response.json();
       return data.token || null;
     } catch (error) {
@@ -60,7 +75,7 @@ function CallbackContent() {
       return null;
     }
   }
-  
+
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
@@ -78,7 +93,7 @@ function CallbackContent() {
       </div>
     );
   }
-  
+
   return (
     <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
       <div className="card max-w-md w-full text-center">

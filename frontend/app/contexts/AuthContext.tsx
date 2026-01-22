@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { User, AuthState, getToken, removeToken, extractUserFromToken, isTokenExpired, getOAuthUrl } from "@/app/lib/auth";
+import { User, AuthState, getToken, removeToken, extractUserFromToken, isTokenExpired, getOAuthUrl, getKeycloakLogoutUrl } from "@/app/lib/auth";
 
 interface AuthContextType extends AuthState {
   login: () => void;
@@ -85,6 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
   
   const logout = useCallback(() => {
+    // Remove local token
     removeToken();
     setAuthState({
       user: null,
@@ -92,8 +93,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: false,
       isLoading: false,
     });
-    router.push("/auth/login");
-  }, [router]);
+    
+    // Redirect to Keycloak logout to clear Keycloak session
+    // This ensures user is logged out from Keycloak as well
+    const logoutUrl = getKeycloakLogoutUrl();
+    window.location.href = logoutUrl;
+  }, []);
   
   const refreshToken = useCallback(async () => {
     // TODO: Implement token refresh via API

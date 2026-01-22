@@ -1,0 +1,42 @@
+# =============================================================================
+# NEXT.JS APPLICATION CONFIGURATION
+# =============================================================================
+
+# Application
+NEXT_PUBLIC_APP_NAME=Bionic-RAG
+NEXT_PUBLIC_APP_VERSION=0.1.0
+NODE_ENV=development
+
+# =============================================================================
+# OAUTH 2.0 CONFIGURATION (Keycloak)
+# =============================================================================
+
+# Keycloak OAuth Configuration
+NEXT_PUBLIC_OAUTH_BASE_URL=https://auth.bionicaisolutions.com/realms/Bionic/protocol/openid-connect
+NEXT_PUBLIC_OAUTH_CLIENT_ID=bionic-rag-client
+NEXT_PUBLIC_OAUTH_REDIRECT_URI=http://localhost:3000/auth/callback
+
+# API Configuration
+NEXT_PUBLIC_API_URL=http://localhost:8001
+
+# =============================================================================
+# DEVELOPMENT CONFIGURATION
+# =============================================================================
+
+# Hot reload
+NEXT_PUBLIC_HOT_RELOAD=true
+
+# API Documentation
+NEXT_PUBLIC_API_DOCS_ENABLED=true
+NEXT_PUBLIC_API_DOCS_PATH=/docs
+
+# Logging
+NEXT_PUBLIC_LOG_LEVEL=info
+
+# =============================================================================
+# PRODUCTION CONFIGURATION
+# =============================================================================
+
+# In production, update these URLs to your production domain:
+# NEXT_PUBLIC_OAUTH_REDIRECT_URI=https://your-domain.com/auth/callback
+# NEXT_PUBLIC_API_URL=https://your-api-domain.com

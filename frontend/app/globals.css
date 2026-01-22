@@ -62,6 +62,13 @@ body {
   border-radius: 4px;
   font-weight: 500;
   transition: background-color 0.2s;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+  box-sizing: border-box;
+  display: block;
+  text-align: center;
 }
 
 .btn-primary:hover {
@@ -76,6 +83,12 @@ body {
   border-radius: 4px;
   font-weight: 500;
   transition: all 0.2s;
+  cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+  display: block;
+  text-align: center;
+  width: 100%;
 }
 
 .btn-secondary:hover {
@@ -89,6 +102,8 @@ body {
   border-radius: 8px;
   padding: 24px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .card-metric {
@@ -102,4 +117,26 @@ body {
 
 .card-metric:hover {
   box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Responsive layout fixes */
+@media (min-width: 640px) {
+  .card {
+    min-width: 320px;
+    max-width: 448px;
+  }
+}
+
+/* Prevent text wrapping in buttons */
+button {
+  white-space: nowrap;
+}
+
+/* Ensure proper container width */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+  box-sizing: border-box;
 }

@@ -14,22 +14,46 @@ async def initialize_all_services():
     """
     Initialize all infrastructure services.
     Called during application startup.
+    Services are initialized with error handling - failures don't prevent app startup.
     """
+    import structlog
+    logger = structlog.get_logger(__name__)
+    
     # Initialize Redis
-    await get_redis_client()
+    try:
+        await get_redis_client()
+        logger.info("Redis client initialized")
+    except Exception as e:
+        logger.warning("Redis initialization failed, will retry on first use", error=str(e))
     
     # Initialize MinIO and create default buckets
-    create_minio_client()
-    await initialize_minio_buckets()
+    try:
+        create_minio_client()
+        await initialize_minio_buckets()
+        logger.info("MinIO client initialized")
+    except Exception as e:
+        logger.warning("MinIO initialization failed, will retry on first use", error=str(e))
     
     # Initialize Meilisearch
-    create_meilisearch_client()
+    try:
+        create_meilisearch_client()
+        logger.info("Meilisearch client initialized")
+    except Exception as e:
+        logger.warning("Meilisearch initialization failed, will retry on first use", error=str(e))
     
-    # Initialize Mem0
-    await mem0_client.initialize()
+    # Initialize Mem0 (has built-in retry logic)
+    try:
+        await mem0_client.initialize()
+        logger.info("Mem0 client initialized")
+    except Exception as e:
+        logger.warning("Mem0 initialization failed, will use Redis fallback", error=str(e))
     
     # Initialize Langfuse
-    create_langfuse_client()
+    try:
+        create_langfuse_client()
+        logger.info("Langfuse client initialized")
+    except Exception as e:
+        logger.warning("Langfuse initialization failed, will continue without observability", error=str(e))
 
 
 async def cleanup_all_services():

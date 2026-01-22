@@ -21,14 +21,20 @@ class AuthSettings(BaseSettings):
     # OAuth 2.0 Configuration
     oauth_enabled: bool = Field(default=True, description="Enable OAuth 2.0 authentication")
     oauth_issuer: str = Field(
-        default="", description="OAuth 2.0 token issuer URL (e.g., https://auth.example.com)"
+        default="", description="OAuth 2.0 token issuer URL (e.g., https://keycloak.example.com/realms/bionic)"
     )
     oauth_jwks_uri: str = Field(
         default="",
-        description="OAuth 2.0 JWKS endpoint URL (e.g., https://auth.example.com/.well-known/jwks.json)",
+        description="OAuth 2.0 JWKS endpoint URL (e.g., https://keycloak.example.com/realms/bionic/protocol/openid-connect/certs)",
     )
     oauth_audience: str = Field(
-        default="", description="OAuth 2.0 token audience (expected audience claim)"
+        default="", description="OAuth 2.0 token audience (client ID)"
+    )
+    oauth_client_id: str = Field(
+        default="", description="OAuth 2.0 client ID"
+    )
+    oauth_client_secret: str = Field(
+        default="", description="OAuth 2.0 client secret"
     )
     oauth_algorithms: list[str] = Field(
         default_factory=lambda: ["RS256", "ES256"], description="Supported JWT algorithms"
@@ -44,7 +50,7 @@ class AuthSettings(BaseSettings):
     )
     oauth_user_profile_endpoint: str = Field(
         default="",
-        description="OAuth provider user profile endpoint for fallback lookup (e.g., https://auth.example.com/userinfo)",
+        description="OAuth provider user profile endpoint for fallback lookup (e.g., https://keycloak.example.com/realms/bionic/protocol/openid-connect/userinfo)",
     )
 
     # API Key Configuration
